@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.28010.2026
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ApolloProgram", "IngameScript1\ApolloProgram.csproj", "{EA391C70-F727-4D4C-B674-AC76329D03AF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ApolloProgram", "ApolloProgram\ApolloProgram.csproj", "{EA391C70-F727-4D4C-B674-AC76329D03AF}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
