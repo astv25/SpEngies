@@ -25,6 +25,9 @@ namespace IngameScript
         public bool lowFiss = false;
         public bool lowIce = false;
         public bool isLanded = false;
+        public float liftThrust = 0.25f;
+        public float descThrust = 0.15f;
+        public int minAlt = 15;
         public IMyGyro mainGyro;
         public IMyThrust mainThrustUp;
         public IMyThrust mainThrustDown;
@@ -68,6 +71,7 @@ namespace IngameScript
             if (isLanded)
             {
                 if(lowBatt || lowFiss || lowIce || bingoFuel) { Echo("One or more resources is low!"); Me.Enabled = false; return; }
+                if(!lowBatt && !lowFiss && !lowIce && !bingoFuel) { goFlight(); }
             }
             //Create container list of sensors
             List<IMySensorBlock> systemSensors = new List<IMySensorBlock>(6) { forwardSensor, leftSensor, rightSensor, rearSensor, topSensor, bottomSensor };
@@ -77,9 +81,10 @@ namespace IngameScript
             updateAntenna(ant, status);
             //Should we land?
             if (lowBatt && lowFiss && lowIce & bingoFuel) { tryLanding(); }
-            //Check orientation
             //Make sure we're the right way up
             checkOrientation();
+            //Check altitude
+            maintainAlt();
         }
         public void getParts()
         {
@@ -161,6 +166,10 @@ namespace IngameScript
                 ice += (int)(item.Amount.RawValue / 1000000);
             }
             int gas = (int)(tank.FilledRatio * 100);
+            if (battper <= 10) { lowBatt = true; }else if (battper > 10) { lowBatt = false; }
+            if (uranium <= 1) { lowFiss = true; }else if (uranium > 1) { lowFiss = false; }
+            if (ice <= 1000) { lowIce = true; }else if (ice > 1000) { lowIce = false; }
+            if (gas <= 10) { bingoFuel = true; }else if (gas > 10) { bingoFuel = false; }
             List<int> output = new List<int>(4) { battper, uranium, ice, gas };
             Echo(String.Format("Battery : {0}%", output[0]));
             Echo(String.Format("Uranium : {0}kg", output[1]));
@@ -187,7 +196,7 @@ namespace IngameScript
             {
                 while(RC.GetShipSpeed() < 5)
                 {
-                    mainThrustDown.ThrustOverridePercentage = 0.15f;
+                    mainThrustDown.ThrustOverridePercentage = descThrust;
                 }
                 mainThrustDown.ThrustOverride = 0;
             }
@@ -212,6 +221,40 @@ namespace IngameScript
             //Set H2 tank to stockpile
             h2stor.Stockpile = true;
             
+        }
+        public void goFlight()
+        {
+            //Enable sensors
+            List<IMySensorBlock> systemSensors = new List<IMySensorBlock>(6) { forwardSensor, leftSensor, rightSensor, rearSensor, topSensor, bottomSensor };
+            initializeSensors(systemSensors);
+            //Enable thrusters
+            List<IMyThrust> thrusters = new List<IMyThrust> { mainThrustBack, mainThrustDown, mainThrustForw, mainThrustLeft, mainThrustRight, mainThrustUp };
+            foreach (IMyThrust a in thrusters) { a.ThrustOverride = 0; a.Enabled = true; }
+            //Set H2 tank to distribute
+            h2stor.Stockpile = false;
+            //Disable gear locks
+            gear1.AutoLock = false;
+            gear1.Unlock();
+            gear2.AutoLock = false;
+            gear2.Unlock();
+            isLanded = false;
+            //Go for minimum operating altitude
+            maintainAlt();
+        }
+        public void maintainAlt()
+        {
+            double elevation;
+            RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevation);
+            while (elevation <= minAlt)
+            {
+                while (RC.GetShipSpeed() < 10)
+                {
+                    mainThrustUp.ThrustOverridePercentage = liftThrust;
+                }
+                mainThrustUp.ThrustOverride = 0;
+            }
+            //Sanity check
+            mainThrustUp.ThrustOverride = 0;
         }
     }
 }
