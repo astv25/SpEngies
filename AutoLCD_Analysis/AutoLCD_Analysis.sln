@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2026
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutoLCD_Analysis", "AutoLCD_Analysis\AutoLCD_Analysis.csproj", "{267A5F44-A953-4024-89CD-A250E2CD1313}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{267A5F44-A953-4024-89CD-A250E2CD1313}.Debug|x64.ActiveCfg = Debug|x64
+		{267A5F44-A953-4024-89CD-A250E2CD1313}.Debug|x64.Build.0 = Debug|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DABF701B-0053-4DA9-8360-99D63D1CBF74}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2026
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ApolloTelemetry_Dynamic", "ApolloTelemetry_Dynamic\ApolloTelemetry_Dynamic.csproj", "{658D580A-6E4B-4757-AEA6-9F5B06115C59}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{658D580A-6E4B-4757-AEA6-9F5B06115C59}.Debug|x64.ActiveCfg = Debug|x64
+		{658D580A-6E4B-4757-AEA6-9F5B06115C59}.Debug|x64.Build.0 = Debug|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A5DB7B8A-8CD8-4B2E-B403-644138826334}
+	EndGlobalSection
+EndGlobal
