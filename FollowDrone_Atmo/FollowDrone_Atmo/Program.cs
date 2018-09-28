@@ -19,15 +19,19 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
+        #region mdk preserve
         public const string nameBase = "FD";
         public bool lowBatt = false;
         public bool bingoFuel = false;
         public bool lowFiss = false;
         public bool lowIce = false;
         public bool isLanded = false;
+        public bool testLand = false;
         public float liftThrust = 0.25f;
         public float descThrust = 0.15f;
         public int minAlt = 15;
+        public const double CTRL_COEFF = 0.3;
+        #endregion
         public IMyGyro mainGyro;
         public IMyThrust mainThrustUp;
         public IMyThrust mainThrustDown;
@@ -68,6 +72,7 @@ namespace IngameScript
             List<int> status = new List<int>(4);
             status = getStatus(mainBattery, mainReactor, h2gen, h2stor);
             //Are we landed and should we remain so?
+            if (testLand) { return; }
             if (isLanded)
             {
                 if(lowBatt || lowFiss || lowIce || bingoFuel) { Echo("One or more resources is low!"); Me.Enabled = false; return; }
@@ -80,7 +85,8 @@ namespace IngameScript
             //Show status in antenna name
             updateAntenna(ant, status);
             //Should we land?
-            if (lowBatt && lowFiss && lowIce & bingoFuel) { tryLanding(); }
+            if (lowBatt || lowFiss || (lowIce && bingoFuel)) { Echo("Low resource(s), landing!"); tryLanding(); }
+            if (testLand) { Echo("Testing landing sequence..."); tryLanding(); }
             //Make sure we're the right way up
             checkOrientation();
             //Check altitude
@@ -132,15 +138,15 @@ namespace IngameScript
             foreach (IMySensorBlock block in sensors)
             {
                 block.BackExtend = 0;
-                block.FrontExtend = 999;
+                block.FrontExtend = 10;
                 block.BottomExtend = 5;
                 block.TopExtend = 5;
-                block.LeftExtend = 5;
-                block.RightExtend = 5;
+                block.LeftExtend = 2.5f;
+                block.RightExtend = 2.5f;
                 block.DetectSubgrids = false;
                 block.DetectStations = false;
                 block.DetectSmallShips = false;
-                block.DetectPlayers = false; //Does this override DetectOwner?
+                block.DetectPlayers = true; //Does this override DetectOwner?
                 block.DetectOwner = true;
                 block.DetectNeutral = false;
                 block.DetectLargeShips = false;
@@ -169,12 +175,12 @@ namespace IngameScript
             if (battper <= 10) { lowBatt = true; }else if (battper > 10) { lowBatt = false; }
             if (uranium <= 1) { lowFiss = true; }else if (uranium > 1) { lowFiss = false; }
             if (ice <= 1000) { lowIce = true; }else if (ice > 1000) { lowIce = false; }
-            if (gas <= 10) { bingoFuel = true; }else if (gas > 10) { bingoFuel = false; }
+            if (gas <= 25) { bingoFuel = true; }else if (gas > 10) { bingoFuel = false; }
             List<int> output = new List<int>(4) { battper, uranium, ice, gas };
             Echo(String.Format("Battery : {0}%", output[0]));
             Echo(String.Format("Uranium : {0}kg", output[1]));
-            Echo(String.Format("Ice     : {0}kg", output[3]));
-            Echo(String.Format("Hydrogen: {0}%", output[4]));
+            Echo(String.Format("Ice     : {0}kg", output[2]));
+            Echo(String.Format("Hydrogen: {0}%", output[3]));
             return output;
         }
         public void updateAntenna(IMyRadioAntenna ant,List<int>stat)
@@ -183,32 +189,67 @@ namespace IngameScript
             ant.CustomName = nameBase;
             //Check for low batt/fuel/uranium/ice status
             if (lowBatt) { ant.CustomName += " Batt:Low"; } else { ant.CustomName += " Batt:" + stat[0] + "%"; }
-            if (bingoFuel) { ant.CustomName += " Fuel:Low"; } else { ant.CustomName += " Fuel:" + stat[4] + "%"; }
-            if (lowFiss) { ant.CustomName += " Ur:Low"; } else { ant.CustomName += " Ur:" + stat[2] + "kg"; }
-            if (lowIce) { ant.CustomName += " Ice:Low"; } else { ant.CustomName += " Ice:" + stat[3] + "kg"; }
+            if (bingoFuel) { ant.CustomName += " Fuel:Low"; } else { ant.CustomName += " Fuel:" + stat[3] + "%"; }
+            if (lowFiss) { ant.CustomName += " Ur:Low"; } else { ant.CustomName += " Ur:" + stat[1] + "kg"; }
+            if (lowIce) { ant.CustomName += " Ice:Low"; } else { ant.CustomName += " Ice:" + stat[2] + "kg"; }
         }
         public void tryLanding()
         {
             checkOrientation();
             gear1.AutoLock = true;
             gear2.AutoLock = true;
-            while (!gear1.IsLocked && !gear2.IsLocked)
+            if (!gear1.IsLocked && !gear2.IsLocked)
             {
-                while(RC.GetShipSpeed() < 5)
+                if (RC.GetShipSpeed() < 5)
                 {
                     mainThrustDown.ThrustOverridePercentage = descThrust;
                 }
-                mainThrustDown.ThrustOverride = 0;
+                if (RC.GetShipSpeed() > 5)
+                {
+                    mainThrustDown.ThrustOverride = 0;
+                }
+                
             }
-            //sanity check
-            mainThrustDown.ThrustOverride = 0;
-            enableStandby();
-            isLanded = true;
+            if (gear1.IsLocked || gear2.IsLocked)
+            {
+                //sanity check
+                mainThrustDown.ThrustOverride = 0;
+                enableStandby();
+                isLanded = true;
+                return;
+            }
         }
         public void checkOrientation()
         {
-            //if the bottom sensor sees ground?
-            //????
+            Matrix orient;
+            RC.Orientation.GetMatrix(out orient);
+            Vector3D down = orient.Down;
+            Vector3D grav = RC.GetNaturalGravity();
+            grav.Normalize();
+            mainGyro.Orientation.GetMatrix(out orient);
+            var lDown = Vector3D.Transform(down, MatrixD.Transpose(orient));
+            var lGrav = Vector3D.Transform(grav, MatrixD.Transpose(mainGyro.WorldMatrix.GetOrientation()));
+            var rot = Vector3D.Cross(lDown, lGrav);
+            double ang = rot.Length();
+            ang = Math.Atan2(ang, Math.Sqrt(Math.Max(00, 1.0 - ang * ang)));
+            if (ang > 0.01)
+            {
+                double ctrl_vel = mainGyro.GetMaximum<float>("Yaw") * (ang / Math.PI) * CTRL_COEFF;
+                ctrl_vel = Math.Min(mainGyro.GetMaximum<float>("Yaw"), ctrl_vel);
+                ctrl_vel = Math.Max(0.01, ctrl_vel);
+                rot.Normalize();
+                rot *= ctrl_vel;
+                mainGyro.SetValueFloat("Pitch", (float)rot.GetDim(0));
+                mainGyro.SetValueFloat("Yaw", -(float)rot.GetDim(1));
+                mainGyro.SetValueFloat("Roll", -(float)rot.GetDim(2));
+                mainGyro.SetValueFloat("Power", 1.0f);
+                mainGyro.GyroOverride = true;
+            }
+            if (ang < 0.01)
+            {
+                mainGyro.GyroOverride = false;
+            }
+            return;
         }
         public void enableStandby()
         {
@@ -245,9 +286,9 @@ namespace IngameScript
         {
             double elevation;
             RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevation);
-            while (elevation <= minAlt)
+            if (elevation <= minAlt)
             {
-                while (RC.GetShipSpeed() < 10)
+                if (RC.GetShipSpeed() < 10)
                 {
                     mainThrustUp.ThrustOverridePercentage = liftThrust;
                 }
