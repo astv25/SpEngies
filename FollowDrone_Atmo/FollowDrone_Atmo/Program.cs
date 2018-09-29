@@ -27,9 +27,9 @@ namespace IngameScript
         public bool lowIce = false;
         public bool isLanded = false;
         public bool testLand = false;
-        public float liftThrust = 0.25f;
-        public float descThrust = 0.15f;
-        public int minAlt = 15;
+        public float liftThrust = 0.40f;
+        public float descThrust = 0.20f;
+        public int minAlt = 20;
         public const double CTRL_COEFF = 0.3;
         #endregion
         public IMyGyro mainGyro;
@@ -44,8 +44,6 @@ namespace IngameScript
         public IMySensorBlock leftSensor;
         public IMySensorBlock rightSensor;
         public IMySensorBlock rearSensor;
-        public IMySensorBlock topSensor;
-        public IMySensorBlock bottomSensor;
         public IMyBatteryBlock mainBattery;
         public IMyReactor mainReactor;
         public IMyGasGenerator h2gen;
@@ -71,15 +69,8 @@ namespace IngameScript
             //Get system resource status
             List<int> status = new List<int>(4);
             status = getStatus(mainBattery, mainReactor, h2gen, h2stor);
-            //Are we landed and should we remain so?
-            if (testLand) { return; }
-            if (isLanded)
-            {
-                if(lowBatt || lowFiss || lowIce || bingoFuel) { Echo("One or more resources is low!"); Me.Enabled = false; return; }
-                if(!lowBatt && !lowFiss && !lowIce && !bingoFuel) { goFlight(); }
-            }
             //Create container list of sensors
-            List<IMySensorBlock> systemSensors = new List<IMySensorBlock>(6) { forwardSensor, leftSensor, rightSensor, rearSensor, topSensor, bottomSensor };
+            List<IMySensorBlock> systemSensors = new List<IMySensorBlock>(4) { forwardSensor, leftSensor, rightSensor, rearSensor };
             Echo("Initialzing sensors...");
             initializeSensors(systemSensors);
             //Show status in antenna name
@@ -87,9 +78,15 @@ namespace IngameScript
             //Should we land?
             if (lowBatt || lowFiss || (lowIce && bingoFuel)) { Echo("Low resource(s), landing!"); tryLanding(); }
             if (testLand) { Echo("Testing landing sequence..."); tryLanding(); }
+            //Are we landed and should we remain so?
+            if (testLand) { return; }
+            if (isLanded) { if (lowBatt || lowFiss || lowIce || bingoFuel) { Echo("One or more resources is low!"); Me.Enabled = false; return; } }
+            if (isLanded && !lowBatt && !lowFiss && !lowIce && !bingoFuel) { goFlight(); }
             //Make sure we're the right way up
+            Echo("DEBUG:  oreintation check");
             checkOrientation();
             //Check altitude
+            Echo("DEBUG:  maintain altitude");
             maintainAlt();
         }
         public void getParts()
@@ -98,7 +95,7 @@ namespace IngameScript
             {
                 long antID = 0;
                 mainGyro = GridTerminalSystem.GetBlockWithName(nameBase + "-Gyro") as IMyGyro;
-                mainThrustUp = GridTerminalSystem.GetBlockWithName(nameBase + "-H2ThrUp") as IMyThrust;
+                mainThrustUp = GridTerminalSystem.GetBlockWithName(nameBase + "-ATThrUp") as IMyThrust;
                 mainThrustDown = GridTerminalSystem.GetBlockWithName(nameBase + "-H2ThrDwn") as IMyThrust;
                 mainThrustForw = GridTerminalSystem.GetBlockWithName(nameBase + "-H2ThrFor") as IMyThrust;
                 mainThrustBack = GridTerminalSystem.GetBlockWithName(nameBase + "-H2ThrBck") as IMyThrust;
@@ -109,8 +106,6 @@ namespace IngameScript
                 leftSensor = GridTerminalSystem.GetBlockWithName(nameBase + "-SensLeft") as IMySensorBlock;
                 rightSensor = GridTerminalSystem.GetBlockWithName(nameBase + "-SensRight") as IMySensorBlock;
                 rearSensor = GridTerminalSystem.GetBlockWithName(nameBase + "-SensRear") as IMySensorBlock;
-                topSensor = GridTerminalSystem.GetBlockWithName(nameBase + "-SensTop") as IMySensorBlock;
-                bottomSensor = GridTerminalSystem.GetBlockWithName(nameBase + "-SensBott") as IMySensorBlock;
                 mainBattery = GridTerminalSystem.GetBlockWithName(nameBase + "-Batt") as IMyBatteryBlock;
                 mainReactor = GridTerminalSystem.GetBlockWithName(nameBase + "-Reactor") as IMyReactor;
                 h2gen = GridTerminalSystem.GetBlockWithName(nameBase + "-O2/H2Gen") as IMyGasGenerator;
@@ -120,17 +115,10 @@ namespace IngameScript
                 //Get antenna regardless of name
                 List<IMyRadioAntenna> blocks = new List<IMyRadioAntenna>();
                 GridTerminalSystem.GetBlocksOfType<IMyRadioAntenna>(blocks);
-                foreach (IMyRadioAntenna item in blocks)
-                {
-                    antID = item.EntityId;
-                }
+                foreach (IMyRadioAntenna item in blocks) { antID = item.EntityId; }
                 ant = GridTerminalSystem.GetBlockWithId(antID) as IMyRadioAntenna;
             }
-            catch (Exception e)
-            {
-                Echo(e.ToString());
-                Me.Enabled = false;
-            }
+            catch (Exception e) { Echo(e.ToString()); Me.Enabled = false; }
         }
 
         public void initializeSensors(List<IMySensorBlock>sensors)
@@ -162,15 +150,9 @@ namespace IngameScript
         {
             int battper = (int)((batt.CurrentStoredPower / batt.MaxStoredPower) * 100);
             int uranium = 0;
-            foreach (IMyInventoryItem item in react.GetInventory(0).GetItems())
-            {
-                uranium += (int)(item.Amount.RawValue / 1000000);
-            }
+            foreach (IMyInventoryItem item in react.GetInventory(0).GetItems()) { uranium += (int)(item.Amount.RawValue / 1000000); }
             int ice = 0;
-            foreach (IMyInventoryItem item in gasgen.GetInventory(0).GetItems())
-            {
-                ice += (int)(item.Amount.RawValue / 1000000);
-            }
+            foreach (IMyInventoryItem item in gasgen.GetInventory(0).GetItems()) { ice += (int)(item.Amount.RawValue / 1000000); }
             int gas = (int)(tank.FilledRatio * 100);
             if (battper <= 10) { lowBatt = true; }else if (battper > 10) { lowBatt = false; }
             if (uranium <= 1) { lowFiss = true; }else if (uranium > 1) { lowFiss = false; }
@@ -181,6 +163,9 @@ namespace IngameScript
             Echo(String.Format("Uranium : {0}kg", output[1]));
             Echo(String.Format("Ice     : {0}kg", output[2]));
             Echo(String.Format("Hydrogen: {0}%", output[3]));
+            double alt;
+            RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out alt);
+            Echo(String.Format("Alt: {0}m", (int)alt));
             return output;
         }
         public void updateAntenna(IMyRadioAntenna ant,List<int>stat)
@@ -257,7 +242,7 @@ namespace IngameScript
             List<IMyThrust> thrusters = new List<IMyThrust> { mainThrustBack, mainThrustDown, mainThrustForw, mainThrustLeft, mainThrustRight, mainThrustUp };
             foreach (IMyThrust a in thrusters) { a.ThrustOverride = 0;a.Enabled = false; }
             //Disable sensors
-            List<IMySensorBlock> systemSensors = new List<IMySensorBlock>(6) { forwardSensor, leftSensor, rightSensor, rearSensor, topSensor, bottomSensor };
+            List<IMySensorBlock> systemSensors = new List<IMySensorBlock>(6) { forwardSensor, leftSensor, rightSensor, rearSensor };
             foreach (IMySensorBlock a in systemSensors) { a.Enabled = false; }
             //Set H2 tank to stockpile
             h2stor.Stockpile = true;
@@ -266,7 +251,7 @@ namespace IngameScript
         public void goFlight()
         {
             //Enable sensors
-            List<IMySensorBlock> systemSensors = new List<IMySensorBlock>(6) { forwardSensor, leftSensor, rightSensor, rearSensor, topSensor, bottomSensor };
+            List<IMySensorBlock> systemSensors = new List<IMySensorBlock>(6) { forwardSensor, leftSensor, rightSensor, rearSensor };
             initializeSensors(systemSensors);
             //Enable thrusters
             List<IMyThrust> thrusters = new List<IMyThrust> { mainThrustBack, mainThrustDown, mainThrustForw, mainThrustLeft, mainThrustRight, mainThrustUp };
@@ -286,16 +271,23 @@ namespace IngameScript
         {
             double elevation;
             RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out elevation);
-            if (elevation <= minAlt)
+            if ((int)elevation < minAlt)
             {
+                Echo("DEBUG:  Alt lower");
                 if (RC.GetShipSpeed() < 10)
                 {
+                    Echo("DEBUG:  Engaging lift thrust");
                     mainThrustUp.ThrustOverridePercentage = liftThrust;
                 }
-                mainThrustUp.ThrustOverride = 0;
+                if (RC.GetShipSpeed() > 10)
+                {
+                    Echo("DEBUG:  Disengaging lift thrust");
+                    mainThrustUp.ThrustOverride = 0;
+                }
             }
             //Sanity check
-            mainThrustUp.ThrustOverride = 0;
+            if (RC.GetShipSpeed() > 10) { mainThrustUp.ThrustOverride = 0; }
+            return;
         }
     }
 }
