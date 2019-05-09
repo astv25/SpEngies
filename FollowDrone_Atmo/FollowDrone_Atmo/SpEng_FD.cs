@@ -27,9 +27,12 @@ namespace IngameScript
 		public List<IMyTerminalBlock> selfgrid = new List<IMyTerminalBlock>();
 		public List<IMyTerminalBlock> selfgridgiveashit = new List<IMyTerminalBlock>();
 		public List<string> wantedtypes = new List<string>("IMyGasTank", "IMyGyro", "IMyBatteryBlock", "IMyReactor", "IMyBlockGroup", "IMyRadioAntenna", "IMyRemoteControl", "IMyThrust", "IMyLandingGear", "IMySensorBlock");
+		public List<string> coretypes = new List<string>("IMyBatteryBlock", "IMyReactor", "IMyGasTank")
+		public List<string> secondaryTypes = new List<string>("IMyRadioAntenna", "IMyGyro", "IMySensorBlock", "IMyThrust", "IMyLandingGear", "IMyRemoteControl");
 		public int minAlt = 20;
 		public int minUr = 1;
 		public int divergenceThreshold = 20; //how much valuesold and values can diverge negatively
+		public const double CTRL_COEFF = 0.3; //defines the strength of Pitch/Roll/Yaw correction
 		
 		public Program()
         {
@@ -43,7 +46,8 @@ namespace IngameScript
 			try 
 			{
 				checkCore();
-				checkStat();
+				damageCheck(coreTypes);
+				damageCheck(secondaryTypes);
 				checkPos();
 				checkProx();
 			}
@@ -143,19 +147,6 @@ namespace IngameScript
 			{
 				throw new LandingException("Uranium low");
 			}
-			//Check core blocks for damage
-			List<string> coretypes = new List<string>("IMyBatteryBlock", "IMyReactor", "IMyGasTank")
-			//It's probably not block.health
-			foreach(string type in coretypes) 
-			{ 
-				foreach(type block in selfgridgiveashit)
-				{
-					if(block.health!=100)
-					{
-						throw new LandingException(string.Format("Damage to {0}, {1}",type, block.Name));
-					}
-				}
-			}
 			//Compare current values to previous
 			foreach(string check in careabout)
 			{
@@ -170,6 +161,65 @@ namespace IngameScript
 			}
 			//Send telemetry home
 			sendTelemetry(values);
+			return;
+		}
+		public void checkPos()
+		{
+			//Get remote control
+			IMyRemoteControl RC;
+			foreach(IMyRemoteControl tRC in GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(selfgridgiveashit)) 
+			{
+				RC = tRC as IMyRemoteControl;
+			}
+			//Get gyro
+			IMyGyro mGy;
+			foreach(IMyGyro tmGy in GridTerminalSystem.GetBlocks<IMyGyro>(selfgridgiveashit))
+			{
+				mGy = tmGy as IMyGyro;
+			}
+			//Check pitch/roll/yaw compared to gravity
+			Matrix orient;
+            RC.Orientation.GetMatrix(out orient);
+            Vector3D down = orient.Down;
+            Vector3D grav = RC.GetNaturalGravity();
+            grav.Normalize();
+            mGy.Orientation.GetMatrix(out orient);
+            var lDown = Vector3D.Transform(down, MatrixD.Transpose(orient));
+            var lGrav = Vector3D.Transform(grav, MatrixD.Transpose(mainGyro.WorldMatrix.GetOrientation()));
+            var rot = Vector3D.Cross(lDown, lGrav);
+            double ang = rot.Length();
+            ang = Math.Atan2(ang, Math.Sqrt(Math.Max(00, 1.0 - ang * ang)));
+            if (ang > 0.01)
+            {
+                double ctrl_vel = mGy.GetMaximum<float>("Yaw") * (ang / Math.PI) * CTRL_COEFF;
+                ctrl_vel = Math.Min(mGy.GetMaximum<float>("Yaw"), ctrl_vel);
+                ctrl_vel = Math.Max(0.01, ctrl_vel);
+                rot.Normalize();
+                rot *= ctrl_vel;
+                mGy.SetValueFloat("Pitch", (float)rot.GetDim(0));
+                mGy.SetValueFloat("Yaw", -(float)rot.GetDim(1));
+                mGy.SetValueFloat("Roll", -(float)rot.GetDim(2));
+                mGy.SetValueFloat("Power", 1.0f);
+                mGy.GyroOverride = true;
+            }
+            if (ang < 0.01)
+            {
+                mGy.GyroOverride = false;
+            }
+            return;
+		}
+		public void damageCheck(List <string> types)
+		{
+			foreach(string type in types)
+			{
+				foreach(IMyTerminalBlock block in GridTerminalSystem.GetBlocksOfType<type>(selfgridgiveashit))
+				{
+					if(block.health != 100)
+					{
+						throw new LandingException(string.Format("Damage to {0}, {1}",type, block.Name));
+					}
+				}
+			}
 			return;
 		}
 		public void sendTelemetry(List <string> data)
