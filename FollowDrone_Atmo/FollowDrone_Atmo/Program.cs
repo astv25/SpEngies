@@ -24,13 +24,16 @@ namespace IngameScript
         public Dictionary<string, float> values = new Dictionary<string, float>();
         public Dictionary<string, float> valuesold = new Dictionary<string, float>();
         public const string namebase = "FD001-"; //naming prefix for blocks we care about (e.g.: FD001-Reactor 1)
-        public List<IMyTerminalBlock> selfgrid = new List<IMyTerminalBlock>();
+        //public List<IMyTerminalBlock> selfgrid = new List<IMyTerminalBlock>();
         public List<IMyTerminalBlock> selfgridgiveashit = new List<IMyTerminalBlock>();
         public List<string> wantedtypes = new List<string>() { "IMyGasTank", "IMyGyro", "IMyBatteryBlock", "IMyReactor", "IMyBlockGroup", "IMyRadioAntenna", "IMyRemoteControl", "IMyThrust", "IMyLandingGear", "IMySensorBlock" };
         public List<string> coreTypes = new List<string>() {"IMyBatteryBlock", "IMyReactor", "IMyGasTank"};
         public List<string> secondaryTypes = new List<string>() { "IMyRadioAntenna", "IMyGyro", "IMySensorBlock", "IMyThrust", "IMyLandingGear", "IMyRemoteControl" };
-        public int minAlt = 20;
-        public int minUr = 1;
+        public int minAlt = 20; //Minimum altitude to maintain (meters)
+        public int minUr = 1;  //Minimum number of uranium ingots in system
+        public const int damageCheckInterval = 5; //How many cycles do we wait between each run of damageCheck()?
+        public int tdCI = 0; //Counter for damageCheck interval
+        public string teltag = "FollowDrone"; //Tag to identify valid broadcast targets, apparently.  Thanks, Keen
         public int divergenceThreshold = 20; //how much valuesold and values can diverge negatively
         public const double CTRL_COEFF = 0.3; //defines the strength of Pitch/Roll/Yaw correction
 
@@ -43,7 +46,8 @@ namespace IngameScript
             try
             {
                 checkCore();
-                damageCheck();
+                if (tdCI == damageCheckInterval) { damageCheck(); tdCI = 0;}
+                else { tdCI++;}
                 checkPos();
                 checkProx();
             }
@@ -245,18 +249,16 @@ namespace IngameScript
         public void sendTelemetry(Dictionary<string, float> data)
         {
             //First, horrific antenna fuckery
-            IMyRadioAntenna ant;
-            long antID = 0;
-            List<IMyRadioAntenna> ants = new List<IMyRadioAntenna>();
-            foreach (IMyTerminalBlock block in selfgridgiveashit) { if (block.BlockDefinition.TypeIdString == "IMyRadioAntenna") { ants.Add(block as IMyRadioAntenna); }}
-            if (ants.Count >= 0) { foreach (IMyRadioAntenna tant in ants) { antID = tant.EntityId; }}
-            try { ant = GridTerminalSystem.GetBlockWithId(antID) as IMyRadioAntenna; }
-            catch (Exception ex) { throw new LandingException("Antenna bind failure"); }
+            IMyIntergridCommunicationSystem ant;
+            List<IMyIntergridCommunicationSystem> ants = new List<IMyIntergridCommunicationSystem>();
+            foreach (IMyTerminalBlock block in selfgridgiveashit) { if (block.BlockDefinition.TypeIdString == "IMyIntergridCommunicationSystem") { ants.Add(block as IMyIntergridCommunicationSystem); }}
+            try { ant = ants[0]; }
+            catch (Exception) { throw new LandingException("Antenna bind failure"); }
             //holy fuck, I hate myself for that
             string message = namebase;
             foreach (string str in careabout)
             { message += " " + str + " " + values[str]; }
-            ant.TransmitMessage(message);
+            ant.SendBroadcastMessage(teltag, message);
             return;
         }
         public void engageReserves()
