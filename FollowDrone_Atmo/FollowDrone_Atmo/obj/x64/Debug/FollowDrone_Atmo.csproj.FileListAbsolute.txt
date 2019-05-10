@@ -27,3 +27,7 @@ C:\Users\astv2\Documents\GitHub\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x
 C:\Users\astv2\Documents\GitHub\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.exe
 C:\Users\astv2\Documents\GitHub\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.pdb
 C:\Users\astv2\Documents\GitHub\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.csprojAssemblyReference.cache
+E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.csprojAssemblyReference.cache
+E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.csproj.CoreCompileInputs.cache
+E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.exe
+E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.pdb

@@ -23,23 +23,20 @@ namespace IngameScript
 		public Dictionary<string, bool> alerts = new Dictionary<string, bool>();
 		public Dictionary<string, float> values = new Dictionary<string, float>();
 		public Dictionary<string, float> valuesold = new Dictionary<string, float>();
-		public const string namebase = "FD001-" //naming prefix for blocks we care about (e.g.: FD001-Reactor 1)
+        public const string namebase = "FD001-"; //naming prefix for blocks we care about (e.g.: FD001-Reactor 1)
 		public List<IMyTerminalBlock> selfgrid = new List<IMyTerminalBlock>();
 		public List<IMyTerminalBlock> selfgridgiveashit = new List<IMyTerminalBlock>();
 		public List<string> wantedtypes = new List<string>("IMyGasTank", "IMyGyro", "IMyBatteryBlock", "IMyReactor", "IMyBlockGroup", "IMyRadioAntenna", "IMyRemoteControl", "IMyThrust", "IMyLandingGear", "IMySensorBlock");
-		public List<string> coretypes = new List<string>("IMyBatteryBlock", "IMyReactor", "IMyGasTank")
+        public List<string> coretypes = new List<string>("IMyBatteryBlock", "IMyReactor", "IMyGasTank");
 		public List<string> secondaryTypes = new List<string>("IMyRadioAntenna", "IMyGyro", "IMySensorBlock", "IMyThrust", "IMyLandingGear", "IMyRemoteControl");
 		public int minAlt = 20;
 		public int minUr = 1;
 		public int divergenceThreshold = 20; //how much valuesold and values can diverge negatively
 		public const double CTRL_COEFF = 0.3; //defines the strength of Pitch/Roll/Yaw correction
 		
-		public Program()
-        {
-            Runtime.UpdateFrequency = UpdateFrequency.Update10;
-        }		
+		public Program(){ Runtime.UpdateFrequency = UpdateFrequency.Update10;}		
 		
-		public void Main(string argument, UpdateType, updateSource) 
+		public void Main() 
 		{
 			//LIST handling:
 			initList();
@@ -58,7 +55,7 @@ namespace IngameScript
 			}
 			catch (Exception ex) 
 			{
-				Echo("Unknown error, landing!")
+                Echo("Unknown error, landing!");
 				land();
 			}
 				
@@ -82,66 +79,54 @@ namespace IngameScript
 			}
 			if(selfgridgiveashit.Length == 0)
 			{
-				foreach (IMyTerminalBlock block in selfgrid) 
-				{
-					if (block.type in wantedtypes && block.Name.contains(namebase))
-					{
-						selfgridgiveashit.add(block);
-					}
-				}
+				foreach (string kindblock in wantedtypes)
+                {
+                    List<kindblock> tmpblk = new List<kindblock>(GridTerminalSystem.GetBlocksOfType<kindblock>());
+                    selfgridgiveashit += tmpblk;
+                }
+			
 			}
 
 		}
-		public class LandingException : Exception {public LandingException(string cause):base(string.Format("Landing immediately.  Cause: {0}", cause){}}
-		public void checkCore(){
-			//Store previous values
-			foreach(KeyValuePair<string,float> kvp in values)
-			{
-				valuesold[kvp] = values[kvp].Value;
-			}
-			//Get H2 tank fill average
-			float tgas = 0.0;
-			int tgascnt = 0;
-			foreach (IMyGasTank tank in selfgridgiveashit) 
-			{
-				if(!tank.Name.contains("Reserve")
-				{
-					tgas += (float)tank.FilledRatio*100;
-					tgascnt++;
-				}
-			}
-			tgas=tgas/tgascnt; //Average out total fill %
-			values[careabout[0]]=tgas;
-			if(tgas<=25)
-			{
-				engageReserves();
-				throw new LandingException("Bingo fuel");
-			}
-			//Get battery charge average
-			float tbchg = 0.0;
-			int tbcnt = 0;
-			foreach (IMyBatteryBlock batt in selfgridgiveashit) 
-			{
-				tbchg += batthelper(batt);
-				tbcnt++;
-			}
-			tbchg = tbchg/tbcnt; //Average out total battery charge %
-			values[caresabout[2]]=tbchg;
-			if(tbchg<=25)
-			{
-				throw new LandingException("Low battery");
-			}
-			//Get Uranium ingots left in reactor(s)
-			long tUr = 0;
-			int tUrI = 0;
-			foreach(IMyReactor react in selfgridgiveashit)
-			{
-				foreach(IMyInventoryItem itm in react.GetInventory(0).GetItems() 
-				{
-					tUr+=itm.Amount.RawValue;
-				}
-			}
-			tUrI = Math.Round(((double)tUr / 1000000),2));
+		public class LandingException : Exception {
+            public LandingException(string cause)
+                : base(string.Format("Landing immediately.  Cause: {0}", cause));
+                     }
+        public void checkCore() {
+            //Store previous values
+            foreach (KeyValuePair<string, float> kvp in values)
+            { valuesold[kvp] = values[kvp].Value; }
+            //Get H2 tank fill average
+            float tgas = 0.0;
+            int tgascnt = 0;
+            foreach (IMyGasTank tank in selfgridgiveashit)
+            {
+                if (!tank.Name.contains("Reserve"))
+                {
+                    tgas += (float)tank.FilledRatio * 100;
+                    tgascnt++;
+                }
+            }
+            tgas = tgas / tgascnt; //Average out total fill %
+            values[careabout[0]] = tgas;
+            if (tgas <= 25)
+            { engageReserves(); throw new LandingException("Bingo fuel"); }
+            //Get battery charge average
+            float tbchg = 0.0;
+            int tbcnt = 0;
+            foreach (IMyBatteryBlock batt in selfgridgiveashit)
+            { tbchg += batthelper(batt); tbcnt++; }
+            tbchg = tbchg / tbcnt; //Average out total battery charge %
+            values[caresabout[2]] = tbchg;
+            if (tbchg <= 25)
+            {
+                throw new LandingException("Low battery");
+            }
+            //Get Uranium ingots left in reactor(s)
+            long tUr = 0;
+            int tUrI = 0;
+            foreach (IMyReactor react in selfgridgiveashit) { foreach (IMyInventoryItem itm in react.GetInventory(0).GetItems()) { tUr += itm.Amount.RawValue; } }
+            tUrI = Math.Round(((double)tUr / 1000000), 2);
 			values[caresabout[1]]=tUrI;
 			if(tURI<minUr)
 			{
@@ -165,18 +150,42 @@ namespace IngameScript
 		}
 		public void checkPos()
 		{
+			correctOrient();
+			correctAlt();
+		}
+		public void correctAlt()
+		{
 			//Get remote control
 			IMyRemoteControl RC;
-			foreach(IMyRemoteControl tRC in GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(selfgridgiveashit)) 
+			foreach(IMyRemoteControl tRC in GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(selfgridgiveashit)) {	RC = tRC as IMyRemoteControl;}
+			//Get applicable thrusters
+			List<IMyThrust> lift = new List<IMyThrust>();
+			foreach(IMyThrust thruster in GridTerminalSystem.GetBlocksOfType<IMyTHrust>(selfgridgiveashit)) { if(thruster.Orientation.Down.ToString()=="Up") { lift+=thruster as IMyThrust;}}
+			//Try to keep drone at minAlt
+			//TODO:  set thrust override based on velocity AND total mass
+			float thrustoverride = 1.0f;
+			double altitude;
+			RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
+			while(altitude<=minAlt)
 			{
-				RC = tRC as IMyRemoteControl;
+				//slowly reduce thrust override until we're balanced
+				//hopefully, anyway
+				while(RC.GetShipSpeed()>=0) { foreach(IMyThrust thruster in lift) {	thruster.Enabled=true;thruster.ThrustOverride = thrustoverride;}thrustoverride-=0.05f;}
 			}
+			while(altitude > minAlt)
+			{
+				while(RC.GetShipSpeed()<=5) { foreach(IMyThrust thruster in lift) { thruster.Enabled=false;}} //cut lift thrust
+				foreach(IMyThrust thruster in lift) { thruster.Enabled=true;} //moderate speed
+			}
+		}
+		public void correctOrient()
+		{
+			//Get remote control
+			IMyRemoteControl RC;
+			foreach(IMyRemoteControl tRC in GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(selfgridgiveashit)) { RC = tRC as IMyRemoteControl;}
 			//Get gyro
 			IMyGyro mGy;
-			foreach(IMyGyro tmGy in GridTerminalSystem.GetBlocks<IMyGyro>(selfgridgiveashit))
-			{
-				mGy = tmGy as IMyGyro;
-			}
+			foreach(IMyGyro tmGy in GridTerminalSystem.GetBlocks<IMyGyro>(selfgridgiveashit)) { mGy = tmGy as IMyGyro;}
 			//Check pitch/roll/yaw compared to gravity
 			Matrix orient;
             RC.Orientation.GetMatrix(out orient);
@@ -202,73 +211,48 @@ namespace IngameScript
                 mGy.SetValueFloat("Power", 1.0f);
                 mGy.GyroOverride = true;
             }
-            if (ang < 0.01)
-            {
-                mGy.GyroOverride = false;
-            }
+            if (ang < 0.01) { mGy.GyroOverride = false;}
             return;
 		}
 		public void damageCheck(List <string> types)
 		{
-			foreach(string type in types)
-			{
-				foreach(IMyTerminalBlock block in GridTerminalSystem.GetBlocksOfType<type>(selfgridgiveashit))
-				{
-					if(block.health != 100)
-					{
-						throw new LandingException(string.Format("Damage to {0}, {1}",type, block.Name));
-					}
-				}
-			}
+			foreach(string type in types) { foreach(IMyTerminalBlock block in GridTerminalSystem.GetBlocksOfType<type>(selfgridgiveashit)) { if(getHealth(block)<=0.75f) { throw new LandingException(string.Format("Damage to {0}, {1}",type, block.Name));}}}
 			return;
+		}
+		public float getHealth(IMyTerminalBlock block)
+		{
+			IMySlimBlock target = block.CubeGrid.GetCubeBlock(block.Position);
+			float maxIntegrity = target.MaxIntegrity;
+			float buildIntegrity = target.BuildIntegrity;
+			float currentDamage = target.CurrentDamage;
+			return (buildIntegrity - currentDamage) / maxIntegrity;
 		}
 		public void sendTelemetry(List <string> data)
 		{
 			//First, horrific antenna fuckery
 			IMyRadioAntenna ant;
 			long antID = 0;
-			List <IMyRadioAntenna> ants = new List <IMyRadioAntenna>;
+			List <IMyRadioAntenna> ants = new List <IMyRadioAntenna>();
 			foreach(IMyTerminalBlock block in selfgridgiveashit)
 			{
-				if(block.Type == IMyRadioAntenna)
-				{
-					ants += block;
-				}
+				if(block.Type == IMyRadioAntenna) { ants += block;}
 			}
 			if(ants.Length >= 0)
 			{
-				foreach(IMyRadioAntenna tant in ants)
-				{
-					antID = tant.EntityId;
-				}
-			}
-			try
-			{
-				ant = GridTerminalSystem.GetBlockwithId(antID) as IMyRadioAntenna;
-			}
-			catch (Exception ex)
-			{
-				throw new LandingException("Antenna bind failure");
-			}
+				foreach(IMyRadioAntenna tant in ants) { antID = tant.EntityId;}}
+			try { ant = GridTerminalSystem.GetBlockwithId(antID) as IMyRadioAntenna;}
+			catch (Exception ex){ throw new LandingException("Antenna bind failure");}
 			//holy fuck, I hate myself for that
 			string message = basename;
 			foreach(string  str in careabout) 
-			{
-				message += " " + str + " " + values[str]; 
-			}
+			{ message += " " + str + " " + values[str];}
 			ant.TransmitMessage(message);
 			return;
 		}
 		public void engageReserves()
 		{
 			//Allow fuel to be pulled from reserve tanks for landing
-			foreach (IMyGasTank tank in selfgridgiveashit) 
-			{
-				if(tank.Name.contains("Reserve")
-				{
-					tank.Stockpile = false;
-				}
-			}
+			foreach (IMyGasTank tank in selfgridgiveashit) { if(tank.Name.contains("Reserve")) { tank.Stockpile = false;}}
 			return;
 		}
 		public float batthelper(IMyBatteryBlock battery) 
@@ -276,9 +260,13 @@ namespace IngameScript
 			//Because batteries don't have FillRatio
 			float battmax = battery.MaxStoredPower;
 			float battcur = battery.CurrentStoredPower;
-			float battratio = battcur / battmax
+            float battratio = battcur / battmax;
 			float battper = battratio * 100;
 			return battper;
 		}
+        public void land()
+        {
+            //TODO:  any landing you walk away from
+        }
 	}
 }

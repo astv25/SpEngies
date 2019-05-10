@@ -26,3 +26,7 @@ C:\Users\astv2\source\repos\IngameScript1\IngameScript1\obj\x64\Debug\ApolloProg
 C:\Users\astv2\source\repos\IngameScript1\IngameScript1\obj\x64\Debug\ApolloProgram.csproj.CopyComplete
 C:\Users\astv2\source\repos\IngameScript1\IngameScript1\obj\x64\Debug\ApolloProgram.exe
 C:\Users\astv2\source\repos\IngameScript1\IngameScript1\obj\x64\Debug\ApolloProgram.pdb
+E:\Git\SpEngies\ApolloProgram\ApolloProgram\obj\x64\Debug\ApolloProgram.csprojAssemblyReference.cache
+E:\Git\SpEngies\ApolloProgram\ApolloProgram\obj\x64\Debug\ApolloProgram.csproj.CoreCompileInputs.cache
+E:\Git\SpEngies\ApolloProgram\ApolloProgram\obj\x64\Debug\ApolloProgram.exe
+E:\Git\SpEngies\ApolloProgram\ApolloProgram\obj\x64\Debug\ApolloProgram.pdb
