@@ -24,6 +24,8 @@ namespace IngameScript
         public Dictionary<string, float> values = new Dictionary<string, float>();
         public Dictionary<string, float> valuesold = new Dictionary<string, float>();
         public List<IMyTerminalBlock> selfgridgiveashit = new List<IMyTerminalBlock>();
+        public TimeSpan LastElapsed;
+        public int lastAltAct = 0; //Last action taken by correctAlt() 0: no action, 1: lift thrust, 2: descent thrust
         #region mdk preserve
         public const string namebase = "FD001-"; //naming prefix for blocks we care about (e.g.: FD001-Reactor 1)
         public int minAlt = 20; //Minimum altitude to maintain (meters)
@@ -34,8 +36,9 @@ namespace IngameScript
         public int divergenceThreshold = 20; //how much valuesold and values can diverge negatively
         public const double CTRL_COEFF = 0.3; //defines the strength of Pitch/Roll/Yaw correction
         public const bool damageCare = false; //do we give a shit about damage?  if true, drone will attempt landing if damaged
-        public float thrustoverride = 0.25f; //percentage of thruster override
+        public float thrustoverride = 0.40f; //percentage of thruster override
         public int altMargin = 5; //minAlt +/- altMargin gives drone target altitude range
+        public int thrustduration = 3000; //time in milliseconds per THRUST action
         #endregion
         public Program() { Runtime.UpdateFrequency = UpdateFrequency.Update10;}
 
@@ -96,6 +99,7 @@ namespace IngameScript
             {}
             public LandingException(string message, Exception inner) {}
         }
+        
         public void checkCore()
         {
             //Store previous values
@@ -153,58 +157,46 @@ namespace IngameScript
                 if (tcheck >= 0) { if (tcheck >= divergenceThreshold) { throw new LandingException(string.Format("Value of {0} exceeded negative change threshold", check));}}
             }
             //Send telemetry home
-            //sendTelemetry(values);
+            sendTelemetry(values);
             return;
         }
         public void checkPos()
         {
             correctOrient();
-            //DEBUG:
-            Echo("Correcting altitude...");
             correctAlt();
         }
         public void correctAlt()
         {
             //Get remote control
             IMyRemoteControl RC;
-            //DEBUG:
-            Echo("-Getting remote control...");
             var tRC = new List<IMyRemoteControl>();
             GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
             RC = tRC[0]; //fuck me, that's retarded
-            //DEBUG:
-            Echo("-Getting list of lift thrusters...");
-            //Get applicable thrusters
-            var lifts = new List<IMyThrust>();
-            GridTerminalSystem.GetBlocksOfType<IMyThrust>(lifts, lift => lift.Orientation.Forward.ToString() == "Down");
-            //Try to keep drone at minAlt
-            //TODO:  set thrust override based on velocity AND total mass
-            //DEBUG:
-            Echo("-Beginning altitude correction with " + lifts.Count + " thrusters...");
             double altitude;
             RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
-            if(altitude <= minAlt - altMargin)
+            var lifts = new List<IMyThrust>();
+            var drops = new List<IMyThrust>();
+            GridTerminalSystem.GetBlocksOfType<IMyThrust>(lifts, lift => lift.Orientation.Forward.ToString() == "Down");
+            GridTerminalSystem.GetBlocksOfType<IMyThrust>(drops, drop => drop.Orientation.Forward.ToString() == "Up");
+            switch (lastAltAct)
             {
-                //DEBUG:
-                Echo("-Altitude is too low");
-                RC.DampenersOverride = false;
-                if (RC.GetShipSpeed() <= 5) { foreach (IMyThrust thruster in lifts) { thruster.ThrustOverridePercentage = thrustoverride; thruster.Enabled = true; } }
-                else if (RC.GetShipSpeed() > 5) { foreach (IMyThrust thruster in lifts) { thruster.ThrustOverridePercentage = 0; } }
-            }
-            else if (altitude > minAlt + altMargin)
-            {
-                //DEBUG:
-                Echo("-Altitude is too high");
-                RC.DampenersOverride = false;
-                if(RC.GetShipSpeed() <= 5) { foreach (IMyThrust thruster in lifts) { thruster.ThrustOverridePercentage = 0; thruster.Enabled = false; } }//cut lift thrusters
-               else if(RC.GetShipSpeed() > 5) { foreach (IMyThrust thruster in lifts) { thruster.ThrustOverridePercentage = thrustoverride; thruster.Enabled = true; } }//moderate speed
-            }
-            else if ((minAlt+altMargin) > altitude && altitude > (minAlt - altMargin))
-            {
-                //DEBUG:
-                Echo("-Altitude is ok");
-                foreach (IMyThrust thruster in lifts) { thruster.ThrustOverridePercentage = 0;thruster.Enabled = true; }
-                RC.DampenersOverride = false;
+                case 0:
+                    if (altitude <= (minAlt - altMargin)) { Echo("Alt low."); engageThrust(lifts); break; }
+                    if (altitude >= (minAlt + altMargin)) { Echo("Alt high."); engageThrust(drops); break; }
+                    if (altitude > (minAlt - altMargin) && altitude < (minAlt + altMargin)) { lastAltAct = 0; LastElapsed = Runtime.TimeSinceLastRun; Echo("Alt OK."); break; }
+                    break;
+
+                case 1:
+                    resetThrust();
+                    break;
+                    
+                case 2:
+                    resetThrust();
+                    break;
+                default:
+                    lastAltAct = 0;
+                    resetThrust();
+                    throw new LandingException("lastAltAct in unexpected state");
             }
         }
         public void correctOrient()
@@ -260,14 +252,12 @@ namespace IngameScript
             float buildIntegrity = target.BuildIntegrity;
             float currentDamage = target.CurrentDamage;
             return (buildIntegrity - currentDamage) / maxIntegrity;
-        }/*
+        }
         public void sendTelemetry(Dictionary<string, float> data)
         {
             IMyRadioAntenna ant;
             List<IMyRadioAntenna> ants = new List<IMyRadioAntenna>();
             GridTerminalSystem.GetBlocksOfType<IMyRadioAntenna>(ants);
-            //DEBUG
-            Echo(ants[0].ToString());
             try { ant = ants[0]; }
             catch (Exception) { throw new LandingException("Antenna bind failure"); }
             string message = namebase;
@@ -275,7 +265,7 @@ namespace IngameScript
             { message += " " + str + " " + values[str]; }
             ant.TransmitMessage(message);
             return;
-        }*/
+        }
         public void engageReserves()
         {
             //Allow fuel to be pulled from reserve tanks for landing
@@ -291,9 +281,34 @@ namespace IngameScript
             float battper = battratio * 100;
             return battper;
         }
+        public void engageThrust(List<IMyThrust> targets)
+        {
+            IMyRemoteControl RC;
+            var tRC = new List<IMyRemoteControl>();
+            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
+            RC = tRC[0];
+            RC.DampenersOverride = false;
+            foreach (IMyThrust thruster in targets) { thruster.ThrustOverridePercentage = thrustoverride; LastElapsed = Runtime.TimeSinceLastRun; lastAltAct = 0; }
+            return;
+        }
+        public void resetThrust()
+        {
+            IMyRemoteControl RC;
+            var tRC = new List<IMyRemoteControl>();
+            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
+            RC = tRC[0];
+            RC.DampenersOverride = true;
+            var targets = new List<IMyThrust>();
+            GridTerminalSystem.GetBlocksOfType<IMyThrust>(targets);
+            foreach (IMyThrust lthruster in targets) { lthruster.ThrustOverridePercentage = 0; }
+            lastAltAct = 0;
+            LastElapsed = Runtime.TimeSinceLastRun;
+            return;
+        }
         public void land()
         {
-            //TODO:  any landing you walk away from
+            resetThrust();
+            correctOrient();
         }
         public void checkProx()
         {
