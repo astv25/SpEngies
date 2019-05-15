@@ -26,13 +26,14 @@ namespace IngameScript
         public List<IMyTerminalBlock> selfgridgiveashit = new List<IMyTerminalBlock>();
         public TimeSpan LastElapsed;
         public int lastAltAct = 0; //Last action taken by correctAlt() 0: no action, 1: lift thrust, 2: descent thrust
+        public bool initSensor = false; //Have sensors been initialized?
         #region mdk preserve
         public const string namebase = "FD001-"; //naming prefix for blocks we care about (e.g.: FD001-Reactor 1)
         public int minAlt = 20; //Minimum altitude to maintain (meters)
+        public int minDist = 20; //Distance from owner to maintain
         public int minUr = 1;  //Minimum number of uranium ingots in system
         public const int damageCheckInterval = 5; //How many cycles do we wait between each run of damageCheck()?
         public int tdCI = 0; //Counter for damageCheck interval
-        //public string teltag = "FollowDrone"; //Tag to identify valid broadcast targets, apparently.  Thanks, Keen
         public int divergenceThreshold = 20; //how much valuesold and values can diverge negatively
         public const double CTRL_COEFF = 0.3; //defines the strength of Pitch/Roll/Yaw correction
         public const bool damageCare = false; //do we give a shit about damage?  if true, drone will attempt landing if damaged
@@ -48,20 +49,15 @@ namespace IngameScript
             initList();
             try
             {
+                //Override existing configuration of sensors
+                if (!initSensor) { initSensors(); }
                 checkCore();
                 if (damageCare)
                 {
-                    //DEBUG:
-                    Echo("Running damage checks...");
-                    Echo("Damage check counter is " + tdCI);
                     if (tdCI == damageCheckInterval) { damageCheck(); tdCI = 0; }
                     else { tdCI++; }
                 }
-                //DEBUG:
-                Echo("Running positional checks...");
                 checkPos();
-                //DEBUG:
-                Echo("Running owner proximity check...");
                 checkProx();
             }
             catch (LandingException ex)
@@ -91,6 +87,31 @@ namespace IngameScript
             //Init block lists
             if (selfgridgiveashit.Count == 0) { GridTerminalSystem.GetBlocks(selfgridgiveashit);}
         }
+        public void initSensors()
+        {
+            var sensors = new List<IMySensorBlock>();
+            GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors);
+            foreach(IMySensorBlock sensor in sensors)
+            {
+                sensor.Enabled = true;
+                sensor.DetectAsteroids = false;
+                sensor.DetectEnemy = false;
+                sensor.DetectFriendly = false;
+                sensor.DetectFloatingObjects = false;
+                sensor.DetectLargeShips = false;
+                sensor.DetectNeutral = false;
+                sensor.DetectOwner = true;
+                sensor.DetectPlayers = true;
+                sensor.DetectSmallShips = false;
+                sensor.DetectSubgrids = false;
+                sensor.FrontExtend = 50;
+                sensor.LeftExtend = 2;
+                sensor.RightExtend = 2;
+                sensor.TopExtend = 10;
+                sensor.BottomExtend = 10;
+                sensor.BackExtend = 0;
+            }
+        }
         public class LandingException : Exception
         {
             public LandingException() {}
@@ -105,10 +126,7 @@ namespace IngameScript
             //Store previous values
             foreach (KeyValuePair<string, float> kvp in values) { valuesold[kvp.Key] = kvp.Value;}
             //Get velocity
-            IMyRemoteControl RC;
-            var tRC = new List<IMyRemoteControl>();
-            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
-            RC = tRC[0];
+            IMyRemoteControl RC = getRC();
             var velocity = RC.GetShipSpeed();
             Echo("Vel: " + (int)velocity + "m/s");
             //Get altitude
@@ -148,10 +166,10 @@ namespace IngameScript
             tUrI = Math.Round(((double)tUr / 1000000), 2);
             values[careabout[1]] = (float)tUrI;
             //DEBUG:  show calculated uranium amount
-            Echo("Total Uranium: " + (float)tUrI + "kg");
+            Echo("Uranium: " + (float)tUrI + "kg");
             if (tUrI < minUr) { throw new LandingException("Uranium low");}
             //Compare current values to previous
-            foreach (string check in careabout)
+            foreach (string check in careabout)//TODO: add specific aberration checks (e.g. Altitude) and specific handling for those [using separate exceptions]
             {
                 float tcheck = valuesold[check] - values[check];
                 if (tcheck >= 0) { if (tcheck >= divergenceThreshold) { throw new LandingException(string.Format("Value of {0} exceeded negative change threshold", check));}}
@@ -167,17 +185,14 @@ namespace IngameScript
         }
         public void correctAlt()
         {
-            //Get remote control
-            IMyRemoteControl RC;
-            var tRC = new List<IMyRemoteControl>();
-            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
-            RC = tRC[0]; //fuck me, that's retarded
+            IMyRemoteControl RC = getRC();
             double altitude;
             RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
             var lifts = new List<IMyThrust>();
             var drops = new List<IMyThrust>();
             GridTerminalSystem.GetBlocksOfType<IMyThrust>(lifts, lift => lift.Orientation.Forward.ToString() == "Down");
             GridTerminalSystem.GetBlocksOfType<IMyThrust>(drops, drop => drop.Orientation.Forward.ToString() == "Up");
+            if (Runtime.TimeSinceLastRun < LastElapsed.Add(TimeSpan.FromMilliseconds(thrustduration))) { lastAltAct = 0; return; }//Only take action after thrustduration delay
             switch (lastAltAct)
             {
                 case 0:
@@ -195,17 +210,12 @@ namespace IngameScript
                     break;
                 default:
                     lastAltAct = 0;
-                    resetThrust();
                     throw new LandingException("lastAltAct in unexpected state");
             }
         }
         public void correctOrient()
         {
-            //Get remote control
-            IMyRemoteControl RC;
-            var tRC = new List<IMyRemoteControl>();
-            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
-            RC = tRC[0]; //still retarded
+            IMyRemoteControl RC = getRC();
             //Get gyros
             var tmGy = new List<IMyGyro>();
             GridTerminalSystem.GetBlocksOfType<IMyGyro>(tmGy);            
@@ -238,12 +248,10 @@ namespace IngameScript
                 }
                 if (ang < 0.01) { gyro.GyroOverride = false; gyro.SetValueFloat("Pitch", 0); gyro.SetValueFloat("Yaw", 0); gyro.SetValueFloat("Roll", 0); }
             }
-            return;
         }
         public void damageCheck()
         {
-            foreach (IMyTerminalBlock block in selfgridgiveashit) { if (getHealth(block) <= 0.75f) { throw new LandingException(string.Format("Damage to {0}, {1}", block.BlockDefinition.TypeIdString.Split('_')[1], block.Name)); } } 
-            return;
+            foreach (IMyTerminalBlock block in selfgridgiveashit) { if (getHealth(block) <= 0.75f) { throw new LandingException(string.Format("Damage to {0}, {1}", block.BlockDefinition.TypeIdString.Split('_')[1], block.DisplayNameText)); } } 
         }
         public float getHealth(IMyTerminalBlock block)
         {
@@ -264,13 +272,13 @@ namespace IngameScript
             foreach (string str in careabout)
             { message += " " + str + " " + values[str]; }
             ant.TransmitMessage(message);
-            return;
         }
         public void engageReserves()
         {
-            //Allow fuel to be pulled from reserve tanks for landing
-            foreach (IMyGasTank tank in selfgridgiveashit) { if (tank.Name.Contains("Reserve")) { tank.Stockpile = false; } }
-            return;
+            //Allow fuel to be pulled from reserve tanks
+            var tanks = new List<IMyGasTank>();
+            GridTerminalSystem.GetBlocksOfType<IMyGasTank>(tanks, tank => (tank.DisplayNameText.Contains("H2") || tank.DisplayNameText.Contains("Hydrogen")) && tank.DisplayNameText.Contains("Reserve"));
+            foreach (IMyGasTank tank in tanks) { tank.Stockpile = false; }
         }
         public float batthelper(IMyBatteryBlock battery)
         {
@@ -283,20 +291,14 @@ namespace IngameScript
         }
         public void engageThrust(List<IMyThrust> targets)
         {
-            IMyRemoteControl RC;
-            var tRC = new List<IMyRemoteControl>();
-            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
-            RC = tRC[0];
+            IMyRemoteControl RC = getRC();
             RC.DampenersOverride = false;
             foreach (IMyThrust thruster in targets) { thruster.ThrustOverridePercentage = thrustoverride; LastElapsed = Runtime.TimeSinceLastRun; lastAltAct = 0; }
             return;
         }
         public void resetThrust()
         {
-            IMyRemoteControl RC;
-            var tRC = new List<IMyRemoteControl>();
-            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
-            RC = tRC[0];
+            IMyRemoteControl RC = getRC();
             RC.DampenersOverride = true;
             var targets = new List<IMyThrust>();
             GridTerminalSystem.GetBlocksOfType<IMyThrust>(targets);
@@ -305,6 +307,14 @@ namespace IngameScript
             LastElapsed = Runtime.TimeSinceLastRun;
             return;
         }
+        public IMyRemoteControl getRC()
+        {
+            IMyRemoteControl RC;
+            var tRC = new List<IMyRemoteControl>();
+            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
+            RC = tRC[0];
+            return RC;
+        }
         public void land()
         {
             resetThrust();
@@ -312,7 +322,26 @@ namespace IngameScript
         }
         public void checkProx()
         {
-            //TODO:  where's owner?
+            var sensors = new List<IMySensorBlock>();
+            int forwardsensorindex = 0;
+            GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors);
+            for (int i = 0; i <= sensors.Count(); i++) { if (sensors[i].Orientation.ToString() == "Forward"){ forwardsensorindex = i; } }
+            //DEBUG:
+            Echo("Forward sensor OwnerId: " + sensors[forwardsensorindex].OwnerId.ToString());
+            Echo("Forward sensor last detected EntityId: " + sensors[forwardsensorindex].LastDetectedEntity.EntityId.ToString());
+            if (sensors[forwardsensorindex].LastDetectedEntity.EntityId == sensors[forwardsensorindex].OwnerId)
+            {
+                Vector3D opos = sensors[forwardsensorindex].LastDetectedEntity.Position;
+                Vector3D spos = sensors[forwardsensorindex].Position;
+                if (Vector3D.Distance(opos, spos) <= minDist)
+                {
+                    return;
+                }
+                else if (Vector3D.Distance(opos, spos) > minDist)
+                {
+                    return;
+                }
+            }
         }
     }
 }
