@@ -19,7 +19,7 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
-        public List<string> careabout = new List<string>() {"h2", "U", "battery"};
+        public List<string> careabout = new List<string>() { "h2", "U", "battery", "alt", "vel" };
         public Dictionary<string, bool> alerts = new Dictionary<string, bool>();
         public Dictionary<string, float> values = new Dictionary<string, float>();
         public Dictionary<string, float> valuesold = new Dictionary<string, float>();
@@ -27,8 +27,12 @@ namespace IngameScript
         public TimeSpan LastElapsed;
         public int lastAltAct = 0; //Last action taken by correctAlt() 0: no action, 1: lift thrust, 2: descent thrust
         public bool initSensor = false; //Have sensors been initialized?
+        public IMyProgrammableBlock gyroctrl;
+        public IMyProgrammableBlock thrustctrl;
         #region mdk preserve
         public const string namebase = "FD001-"; //naming prefix for blocks we care about (e.g.: FD001-Reactor 1)
+        public const string gyrooffload = null; //Name of programmable block to offload gyro control to, null for no offload
+        public const string thrustoffload = null; //Name of programmable to offload thruster control to, null for no offload
         public int minAlt = 20; //Minimum altitude to maintain (meters)
         public int minDist = 20; //Distance from owner to maintain
         public int minUr = 1;  //Minimum number of uranium ingots in system
@@ -40,6 +44,7 @@ namespace IngameScript
         public float thrustoverride = 0.40f; //percentage of thruster override
         public int altMargin = 5; //minAlt +/- altMargin gives drone target altitude range
         public int thrustduration = 3000; //time in milliseconds per THRUST action
+        public int altlossthresh = 50; //at how many meters of altitude lost between cycles do we panic?
         #endregion
         public Program() { Runtime.UpdateFrequency = UpdateFrequency.Update10;}
 
@@ -65,6 +70,11 @@ namespace IngameScript
                 Echo(ex.Message);
                 land();
             }
+            catch (ChuteException ex)
+            {
+                Echo(ex.Message);
+                chutechutechute();
+            }
             catch (Exception)
             {
                 Echo("Unknown error, landing!");
@@ -84,8 +94,11 @@ namespace IngameScript
                     valuesold.Add(careabout[index], 1.0f);
                 }
             }
-            //Init block lists
+            //Init block lists and statics
             if (selfgridgiveashit.Count == 0) { GridTerminalSystem.GetBlocks(selfgridgiveashit);}
+            if (gyrooffload != null) { gyroctrl = GridTerminalSystem.GetBlockWithName(gyrooffload) as IMyProgrammableBlock; }
+            if (thrustoffload != null) { thrustctrl = GridTerminalSystem.GetBlockWithName(thrustoffload) as IMyProgrammableBlock; 
+}
         }
         public void initSensors()
         {
@@ -120,6 +133,14 @@ namespace IngameScript
             {}
             public LandingException(string message, Exception inner) {}
         }
+        public class ChuteException : Exception
+        {
+            public ChuteException() {}
+            public ChuteException(string message)
+                : base(string.Format("Deploying parachute.  Cause: {0}", message))
+            {}
+            public ChuteException(string message, Exception inner) {}
+        }
         
         public void checkCore()
         {
@@ -128,10 +149,12 @@ namespace IngameScript
             //Get velocity
             IMyRemoteControl RC = getRC();
             var velocity = RC.GetShipSpeed();
+            values["vel"] = (float)velocity;
             Echo("Vel: " + (int)velocity + "m/s");
             //Get altitude
             double altitude;
             RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
+            values["alt"] = (float)altitude;
             Echo("Alt: " + (int)altitude + "m");
             //Get H2 tank fill average
             float tgas = 0.0f;
@@ -169,10 +192,12 @@ namespace IngameScript
             Echo("Uranium: " + (float)tUrI + "kg");
             if (tUrI < minUr) { throw new LandingException("Uranium low");}
             //Compare current values to previous
+            //Altitude:
+            if ((valuesold["alt"]-values["alt"]) >= altlossthresh) { throw new ChuteException("Rapid descent"); }
             foreach (string check in careabout)//TODO: add specific aberration checks (e.g. Altitude) and specific handling for those [using separate exceptions]
             {
-                float tcheck = valuesold[check] - values[check];
-                if (tcheck >= 0) { if (tcheck >= divergenceThreshold) { throw new LandingException(string.Format("Value of {0} exceeded negative change threshold", check));}}
+                if(check=="alt") { continue; }//already checked above
+                if ((valuesold[check]-values[check]) >= 0) { if ((valuesold[check]-values[check]) >= divergenceThreshold) { throw new LandingException(string.Format("Value of {0} exceeded negative change threshold", check));}}
             }
             //Send telemetry home
             sendTelemetry(values);
@@ -215,39 +240,56 @@ namespace IngameScript
         }
         public void correctOrient()
         {
-            IMyRemoteControl RC = getRC();
-            //Get gyros
-            var tmGy = new List<IMyGyro>();
-            GridTerminalSystem.GetBlocksOfType<IMyGyro>(tmGy);            
-            //Check pitch/roll/yaw compared to gravity
-            Matrix orient;
-            RC.Orientation.GetMatrix(out orient);
-            Vector3D down = orient.Down;
-            Vector3D grav = RC.GetNaturalGravity();
-            grav.Normalize();
-            foreach (IMyGyro gyro in tmGy)
+            //Check for a configured offload block
+            try
             {
-                gyro.Orientation.GetMatrix(out orient);
-                var lDown = Vector3D.Transform(down, MatrixD.Transpose(orient));
-                var lGrav = Vector3D.Transform(grav, MatrixD.Transpose(gyro.WorldMatrix.GetOrientation()));
-                var rot = Vector3D.Cross(lDown, lGrav);
-                double ang = rot.Length();
-                ang = Math.Atan2(ang, Math.Sqrt(Math.Max(00, 1.0 - ang * ang)));
-                if (ang > 0.01)
+                try
                 {
-                    double ctrl_vel = gyro.GetMaximum<float>("Yaw") * (ang / Math.PI) * CTRL_COEFF;
-                    ctrl_vel = Math.Min(gyro.GetMaximum<float>("Yaw"), ctrl_vel);
-                    ctrl_vel = Math.Max(0.01, ctrl_vel);
-                    rot.Normalize();
-                    rot *= ctrl_vel;
-                    gyro.SetValueFloat("Pitch", (float)rot.GetDim(0));
-                    gyro.SetValueFloat("Yaw", -(float)rot.GetDim(1));
-                    gyro.SetValueFloat("Roll", -(float)rot.GetDim(2));
-                    gyro.SetValueFloat("Power", 1.0f);
-                    gyro.GyroOverride = true;
+                    if (gyrooffload != null && gyroctrl.CustomData == "Ready") { gyroctrl.TryRun(null); }
                 }
-                if (ang < 0.01) { gyro.GyroOverride = false; gyro.SetValueFloat("Pitch", 0); gyro.SetValueFloat("Yaw", 0); gyro.SetValueFloat("Roll", 0); }
+                catch (Exception)
+                {
+                    Echo("WARN:  Gyro offload fail, asserting local control.");
+                }
+                IMyRemoteControl RC = getRC();
+                //Get gyros
+                var tmGy = new List<IMyGyro>();
+                GridTerminalSystem.GetBlocksOfType<IMyGyro>(tmGy);
+                //Check pitch/roll/yaw compared to gravity
+                Matrix orient;
+                RC.Orientation.GetMatrix(out orient);
+                Vector3D down = orient.Down;
+                Vector3D grav = RC.GetNaturalGravity();
+                grav.Normalize();
+                foreach (IMyGyro gyro in tmGy)
+                {
+                    gyro.Orientation.GetMatrix(out orient);
+                    var lDown = Vector3D.Transform(down, MatrixD.Transpose(orient));
+                    var lGrav = Vector3D.Transform(grav, MatrixD.Transpose(gyro.WorldMatrix.GetOrientation()));
+                    var rot = Vector3D.Cross(lDown, lGrav);
+                    double ang = rot.Length();
+                    ang = Math.Atan2(ang, Math.Sqrt(Math.Max(00, 1.0 - ang * ang)));
+                    if (ang > 0.01)
+                    {
+                        double ctrl_vel = gyro.GetMaximum<float>("Yaw") * (ang / Math.PI) * CTRL_COEFF;
+                        ctrl_vel = Math.Min(gyro.GetMaximum<float>("Yaw"), ctrl_vel);
+                        ctrl_vel = Math.Max(0.01, ctrl_vel);
+                        rot.Normalize();
+                        rot *= ctrl_vel;
+                        gyro.SetValueFloat("Pitch", (float)rot.GetDim(0));
+                        gyro.SetValueFloat("Yaw", -(float)rot.GetDim(1));
+                        gyro.SetValueFloat("Roll", -(float)rot.GetDim(2));
+                        gyro.SetValueFloat("Power", 1.0f);
+                        gyro.GyroOverride = true;
+                    }
+                    if (ang < 0.01) { gyro.GyroOverride = false; gyro.SetValueFloat("Pitch", 0); gyro.SetValueFloat("Yaw", 0); gyro.SetValueFloat("Roll", 0); }
+                }
             }
+            catch (Exception ex)
+            {
+                throw new LandingException("Gyro processing exception: " + ex);
+            }
+            
         }
         public void damageCheck()
         {
@@ -319,6 +361,55 @@ namespace IngameScript
         {
             resetThrust();
             correctOrient();
+            //TODO:  the rest
+        }
+        public void chutechutechute()
+        {
+            //oh god oh fuck
+            try { correctOrient(); }
+            catch { Echo("WARN:  automatic orientation correction failure!"); } //parachute and gravity will probably fix this anyway
+            try { resetThrust(); }
+            catch
+            {
+                Echo("WARN:  automatic thruster reset failure!"); //uh oh
+                Echo("INFO:  attempting to override...");
+                try
+                {
+                    IMyRemoteControl RC = getRC();
+                    RC.DampenersOverride = false;
+                    var targets = new List<IMyThrust>();
+                    GridTerminalSystem.GetBlocksOfType<IMyThrust>(targets);
+                    foreach (IMyThrust target in targets) { target.Enabled = false; }
+                }
+                catch
+                {
+                    Echo("CRITICAL:  override of thrusters failed!"); //fuck
+                    Echo("INFO:  attempting to disengage fuel system...");
+                    try
+                    {
+                        var targets = new List<IMyGasTank>();
+                        GridTerminalSystem.GetBlocksOfType<IMyGasTank>(targets);
+                        foreach (IMyGasTank target in targets) { target.Stockpile = true; }
+                        var targets2 = new List<IMyGasGenerator>();
+                        GridTerminalSystem.GetBlocksOfType<IMyGasGenerator>(targets2);
+                        foreach (IMyGasGenerator target in targets2) { target.Enabled = false; }
+                    }
+                    catch
+                    {
+                        Echo("CRITICAL:  unable to disengage fuel system!"); //holy shit
+                    }
+                    
+                }
+                
+            }
+            try
+            {
+                var chutes = new List<IMyParachute>();
+                GridTerminalSystem.GetBlocksOfType<IMyParachute>(chutes);
+                foreach (IMyParachute chute in chutes) { chute.OpenDoor(); }
+            }
+            catch { Echo("CRITICAL:  chute failure!"); } //F
+            
         }
         public void checkProx()
         {
