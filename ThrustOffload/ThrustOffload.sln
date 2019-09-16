@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.779
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ThrustOffload", "ThrustOffload\ThrustOffload.csproj", "{B6639FE0-D546-482B-B4D4-A011C08D3DA4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B6639FE0-D546-482B-B4D4-A011C08D3DA4}.Debug|x64.ActiveCfg = Debug|x64
+		{B6639FE0-D546-482B-B4D4-A011C08D3DA4}.Debug|x64.Build.0 = Debug|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DA2C9E3B-6480-4D24-A049-CABCF5CA6DE9}
+	EndGlobalSection
+EndGlobal

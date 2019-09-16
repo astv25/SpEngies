@@ -96,9 +96,16 @@ namespace IngameScript
             }
             //Init block lists and statics
             if (selfgridgiveashit.Count == 0) { GridTerminalSystem.GetBlocks(selfgridgiveashit);}
-            if (gyrooffload != null) { gyroctrl = GridTerminalSystem.GetBlockWithName(gyrooffload) as IMyProgrammableBlock; }
-            if (thrustoffload != null) { thrustctrl = GridTerminalSystem.GetBlockWithName(thrustoffload) as IMyProgrammableBlock; 
-}
+            if (gyrooffload != null)
+            {
+                gyroctrl = GridTerminalSystem.GetBlockWithName(gyrooffload) as IMyProgrammableBlock;
+                gyroctrl.TryRun("INIT");
+            }
+            if (thrustoffload != null)
+            {
+                thrustctrl = GridTerminalSystem.GetBlockWithName(thrustoffload) as IMyProgrammableBlock;
+                thrustctrl.TryRun("INIT, " + minAlt.ToString() + ", " + altMargin.ToString() + ", " + thrustduration.ToString() + ", " + thrustoverride.ToString());
+            }
         }
         public void initSensors()
         {
@@ -210,6 +217,20 @@ namespace IngameScript
         }
         public void correctAlt()
         {
+            try //Check for configured thrust control offload
+            {
+                if (thrustoffload != null)
+                {
+                    if (thrustctrl.CustomData == "READY") { thrustctrl.TryRun("RUN"); return; }
+                    if (thrustctrl.CustomData == "PROCESSING") { return; }
+                    else { throw new Exception(); }
+                }
+            }
+            catch (Exception)
+            {
+                Echo("WARN:  Thrust offload failure, attempting local control.");
+            }
+            
             IMyRemoteControl RC = getRC();
             double altitude;
             RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
@@ -240,16 +261,20 @@ namespace IngameScript
         }
         public void correctOrient()
         {
-            //Check for a configured offload block
             try
             {
-                try
-                {
-                    if (gyrooffload != null && gyroctrl.CustomData == "Ready") { gyroctrl.TryRun(null); }
+                try //Check for a configured offload block
+                {   
+                    if (gyrooffload != null)
+                    {
+                        if (gyroctrl.CustomData == "READY") { gyroctrl.TryRun(CTRL_COEFF.ToString()); return; }
+                        if (gyroctrl.CustomData == "PROCESSING") { return; }
+                        else { throw new Exception(); }
+                    }
                 }
                 catch (Exception)
                 {
-                    Echo("WARN:  Gyro offload fail, asserting local control.");
+                    Echo("WARN:  Gyro offload failure, attempting local control.");
                 }
                 IMyRemoteControl RC = getRC();
                 //Get gyros

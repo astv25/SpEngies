@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.779
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GyroOffload", "GyroOffload\GyroOffload.csproj", "{505F0818-4F42-4C6C-A75B-E00EF8FEEB9F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{505F0818-4F42-4C6C-A75B-E00EF8FEEB9F}.Debug|x64.ActiveCfg = Debug|x64
+		{505F0818-4F42-4C6C-A75B-E00EF8FEEB9F}.Debug|x64.Build.0 = Debug|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3A85A477-DF21-4A0F-9189-057D06F10939}
+	EndGlobalSection
+EndGlobal
