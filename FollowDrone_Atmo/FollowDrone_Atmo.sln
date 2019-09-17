@@ -5,6 +5,10 @@ VisualStudioVersion = 15.0.28010.2026
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FollowDrone_Atmo", "FollowDrone_Atmo\FollowDrone_Atmo.csproj", "{507CA253-B436-424E-A61A-DADB78C12FEA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ThrustOffload", "..\ThrustOffload\ThrustOffload\ThrustOffload.csproj", "{B6639FE0-D546-482B-B4D4-A011C08D3DA4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GyroOffload", "..\GyroOffload\GyroOffload\GyroOffload.csproj", "{505F0818-4F42-4C6C-A75B-E00EF8FEEB9F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -12,6 +16,10 @@ Global
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{507CA253-B436-424E-A61A-DADB78C12FEA}.Debug|x64.ActiveCfg = Debug|x64
 		{507CA253-B436-424E-A61A-DADB78C12FEA}.Debug|x64.Build.0 = Debug|x64
+		{B6639FE0-D546-482B-B4D4-A011C08D3DA4}.Debug|x64.ActiveCfg = Debug|x64
+		{B6639FE0-D546-482B-B4D4-A011C08D3DA4}.Debug|x64.Build.0 = Debug|x64
+		{505F0818-4F42-4C6C-A75B-E00EF8FEEB9F}.Debug|x64.ActiveCfg = Debug|x64
+		{505F0818-4F42-4C6C-A75B-E00EF8FEEB9F}.Debug|x64.Build.0 = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

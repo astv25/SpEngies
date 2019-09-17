@@ -68,6 +68,7 @@ namespace IngameScript
                     Me.CustomData = "FAULT";
                 }
                 Me.CustomData = "READY";
+                return;
             }
             if(Convert.ToDouble(argument) <= 1.00)
             {

@@ -98,6 +98,8 @@ namespace IngameScript
                 altMargin = Convert.ToInt32(args[2]);
                 thrustduration = Convert.ToInt32(args[3]);
                 thrustoverride = float.Parse(args[4]);
+                Me.CustomData = "READY";
+                return;
             }
             if(args[0] == "RUN")
             {

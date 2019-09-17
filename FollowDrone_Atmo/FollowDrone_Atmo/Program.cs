@@ -24,15 +24,18 @@ namespace IngameScript
         public Dictionary<string, float> values = new Dictionary<string, float>();
         public Dictionary<string, float> valuesold = new Dictionary<string, float>();
         public List<IMyTerminalBlock> selfgridgiveashit = new List<IMyTerminalBlock>();
-        public TimeSpan LastElapsed;
+        public TimeSpan LastElapsed; //Time of last thrust action
+        public TimeSpan LastElapsedRot; //Time at which point rotation was initiated
+        public TimeSpan LastElapsedDad; //Time at which point daddy was last seen
         public int lastAltAct = 0; //Last action taken by correctAlt() 0: no action, 1: lift thrust, 2: descent thrust
         public bool initSensor = false; //Have sensors been initialized?
+        public bool rotating = false; //Are we rotating to face player?
         public IMyProgrammableBlock gyroctrl;
         public IMyProgrammableBlock thrustctrl;
         #region mdk preserve
         public const string namebase = "FD001-"; //naming prefix for blocks we care about (e.g.: FD001-Reactor 1)
-        public const string gyrooffload = null; //Name of programmable block to offload gyro control to, null for no offload
-        public const string thrustoffload = null; //Name of programmable to offload thruster control to, null for no offload
+        public string gyrooffload = null; //Name of programmable block to offload gyro control to, null for no offload
+        public string thrustoffload = null; //Name of programmable to offload thruster control to, null for no offload
         public int minAlt = 20; //Minimum altitude to maintain (meters)
         public int minDist = 20; //Distance from owner to maintain
         public int minUr = 1;  //Minimum number of uranium ingots in system
@@ -75,9 +78,10 @@ namespace IngameScript
                 Echo(ex.Message);
                 chutechutechute();
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 Echo("Unknown error, landing!");
+                Echo(ex.Message);
                 land();
             }
            
@@ -98,13 +102,33 @@ namespace IngameScript
             if (selfgridgiveashit.Count == 0) { GridTerminalSystem.GetBlocks(selfgridgiveashit);}
             if (gyrooffload != null)
             {
-                gyroctrl = GridTerminalSystem.GetBlockWithName(gyrooffload) as IMyProgrammableBlock;
-                gyroctrl.TryRun("INIT");
+                try
+                {
+                    gyroctrl = GridTerminalSystem.GetBlockWithName(gyrooffload) as IMyProgrammableBlock;
+                    gyroctrl.TryRun("INIT");
+                }
+                catch (Exception ex)
+                {
+                    Echo("Unable to initialize gyro control!");
+                    Echo("Disabling gyro offload...");
+                    gyrooffload = null;
+                    Echo(ex.Message);
+                }
             }
             if (thrustoffload != null)
             {
-                thrustctrl = GridTerminalSystem.GetBlockWithName(thrustoffload) as IMyProgrammableBlock;
-                thrustctrl.TryRun("INIT, " + minAlt.ToString() + ", " + altMargin.ToString() + ", " + thrustduration.ToString() + ", " + thrustoverride.ToString());
+                try
+                {
+                    thrustctrl = GridTerminalSystem.GetBlockWithName(thrustoffload) as IMyProgrammableBlock;
+                    thrustctrl.TryRun("INIT, " + minAlt.ToString() + ", " + altMargin.ToString() + ", " + thrustduration.ToString() + ", " + thrustoverride.ToString());
+                }
+                catch (Exception ex)
+                {
+                    Echo("Unable to initialize thrust control!");
+                    Echo("Disabling thrust offload...");
+                    thrustoffload = null;
+                    Echo(ex.Message);
+                }
             }
         }
         public void initSensors()
@@ -212,7 +236,7 @@ namespace IngameScript
         }
         public void checkPos()
         {
-            correctOrient();
+            if (!rotating) { correctOrient(); } //hopefully we don't tip the fuck over
             correctAlt();
         }
         public void correctAlt()
@@ -439,25 +463,73 @@ namespace IngameScript
         public void checkProx()
         {
             var sensors = new List<IMySensorBlock>();
-            int forwardsensorindex = 0;
+            bool daddyfound = false;
+            long tmp = 0;//FUCK YOU KEEN, THIS IS RETARDED
+            IMySensorBlock forwardsensor = GridTerminalSystem.GetBlockWithId(tmp) as IMySensorBlock;
             GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors);
-            for (int i = 0; i <= sensors.Count(); i++) { if (sensors[i].Orientation.ToString() == "Forward"){ forwardsensorindex = i; } }
-            //DEBUG:
-            Echo("Forward sensor OwnerId: " + sensors[forwardsensorindex].OwnerId.ToString());
-            Echo("Forward sensor last detected EntityId: " + sensors[forwardsensorindex].LastDetectedEntity.EntityId.ToString());
-            if (sensors[forwardsensorindex].LastDetectedEntity.EntityId == sensors[forwardsensorindex].OwnerId)
+            foreach (IMySensorBlock sensor in sensors) { if(sensor.Orientation.Forward.ToString() == "Forward") { forwardsensor = sensor; break; } }
+            foreach (IMySensorBlock sensor in sensors)
             {
-                Vector3D opos = sensors[forwardsensorindex].LastDetectedEntity.Position;
-                Vector3D spos = sensors[forwardsensorindex].Position;
-                if (Vector3D.Distance(opos, spos) <= minDist)
+                var entities = new List<MyDetectedEntityInfo>();
+                sensor.DetectedEntities(entities);
+                if (entities.Count > 0)
                 {
-                    return;
-                }
-                else if (Vector3D.Distance(opos, spos) > minDist)
-                {
-                    return;
+                    daddyfound = true;
+                    switch (sensor.Orientation.Forward.ToString())
+                    {
+                        case "Forward":
+                            //get distance, close if distance is over minDist
+                            break;
+                        case "Backward":
+                            Echo("DEBUG:  owner found, rear sensor.");
+                            rotateSelf("L", 180);
+                            break;
+                        case "Left":
+                            rotateSelf("L", 90);
+                            break;
+                        case "Right":
+                            rotateSelf("R", 90);
+                            break;                        
+                    }
                 }
             }
+        }
+        public void rotateSelf(string direction, int degrees)
+        {
+            var tmGy = new List<IMyGyro>();
+            GridTerminalSystem.GetBlocksOfType<IMyGyro>(tmGy);
+            /*  Convert degrees into # of full 360 rotations
+             *  Multiply 120 sec (0.5 RPM) by # rotations
+             *  Divide result by total # of gyros to get total time to override gyros
+             */
+            int timewait = (int)((120 * (1 / (360 / degrees))) / tmGy.Count());
+            if (!rotating)
+            {
+                float yawdir = 0;
+                if (direction == "L") { yawdir = 1; }
+                if (direction == "R") { yawdir = -1; }                
+                LastElapsedRot = Runtime.TimeSinceLastRun;
+                foreach (IMyGyro gyro in tmGy)
+                {
+                    gyro.GyroOverride = true;
+                    gyro.SetValueFloat("Yaw", 0.5f * yawdir);
+                }
+                rotating = true;
+            }
+            if (rotating)
+            {
+                if (Runtime.TimeSinceLastRun < LastElapsedRot.Add(TimeSpan.FromSeconds(timewait))) { return; }//don't do anything if we haven't rotated for the proper amount of time
+                if (Runtime.TimeSinceLastRun >= LastElapsedRot.Add(TimeSpan.FromSeconds(timewait)))
+                {   
+                    foreach (IMyGyro gyro in tmGy)
+                    {
+                        gyro.GyroOverride = false;
+                        gyro.SetValueFloat("Yaw", 0);
+                    }
+                    rotating = false;
+                }
+            }
+            
         }
     }
 }
