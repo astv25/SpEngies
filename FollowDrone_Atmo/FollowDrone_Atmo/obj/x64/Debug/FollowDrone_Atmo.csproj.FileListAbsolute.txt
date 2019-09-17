@@ -166,7 +166,6 @@ E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\bin\ru\Microsoft.CodeAnalysis.
 E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\bin\tr\Microsoft.CodeAnalysis.resources.dll
 E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\bin\zh-Hans\Microsoft.CodeAnalysis.resources.dll
 E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\bin\zh-Hant\Microsoft.CodeAnalysis.resources.dll
-E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.csprojAssemblyReference.cache
 E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.exe.config
 E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.csproj.CoreCompileInputs.cache
 E:\Git\SpEngies\FollowDrone_Atmo\FollowDrone_Atmo\obj\x64\Debug\FollowDrone_Atmo.csproj.CopyComplete

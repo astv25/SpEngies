@@ -1,18 +1,9 @@
-﻿using Sandbox.Game.EntityComponents;
-using Sandbox.ModAPI.Ingame;
+﻿using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI.Ingame;
-using System.Collections.Generic;
-using System.Collections;
-using System.Linq;
-using System.Text;
 using System;
-using VRage.Collections;
-using VRage.Game.Components;
+using System.Collections.Generic;
 using VRage.Game.ModAPI.Ingame;
-using VRage.Game.ModAPI.Ingame.Utilities;
-using VRage.Game.ObjectBuilders.Definitions;
-using VRage.Game;
 using VRageMath;
 
 namespace IngameScript
@@ -20,37 +11,38 @@ namespace IngameScript
     partial class Program : MyGridProgram
     {
         public List<string> careabout = new List<string>() { "h2", "U", "battery", "alt", "vel" };
+        public List<IMyTerminalBlock> selfgridgiveashit = new List<IMyTerminalBlock>();
         public Dictionary<string, bool> alerts = new Dictionary<string, bool>();
         public Dictionary<string, float> values = new Dictionary<string, float>();
         public Dictionary<string, float> valuesold = new Dictionary<string, float>();
-        public List<IMyTerminalBlock> selfgridgiveashit = new List<IMyTerminalBlock>();
         public TimeSpan LastElapsed; //Time of last altitude corrective action
         public TimeSpan LastElapsedSeek; //Time at which point seek thrust was initiated
         public TimeSpan LastElapsedDad; //Time at which point daddy was last seen
         public int lastSeekAct = 0; //Last action taken by checkProx() to seek daddy  0: no action, 1: engage thrusters
         public int lastAltAct = 0; //Last action taken by correctAlt() 0: no action, 1: lift thrust, 2: descent thrust
         public bool initSensor = false; //Have sensors been initialized?
-        public bool rotating = false; //Are we rotating to face player?
+        public bool landed = false; //Have we landed?
+        public string status; //Status to report via telemetry
         public IMyProgrammableBlock gyroctrl;
         public IMyProgrammableBlock thrustctrl;
         #region mdk preserve
         public const string namebase = "FD001"; //naming prefix for drone
         public string gyrooffload = null; //Name of programmable block to offload gyro control to, null for no offload
         public string thrustoffload = null; //Name of programmable to offload thruster control to, null for no offload
-        public int minAlt = 20; //Minimum altitude to maintain (meters)
-        public int minDist = 20; //Distance from owner to maintain
-        public int minUr = 1;  //Minimum number of uranium ingots in system
         public const int damageCheckInterval = 5; //How many cycles do we wait between each run of damageCheck()?
+        public int minAlt = 20; //Minimum altitude to maintain (meters)
+        public int minDist = 20; //Distance (in meters) from owner to maintain
+        public int minUr = 1;  //Minimum kgs of uranium ingots in system
         public int tdCI = 0; //Counter for damageCheck interval
         public int divergenceThreshold = 20; //how much valuesold and values can diverge negatively
-        public const double CTRL_COEFF = 0.3; //defines the strength of Pitch/Roll/Yaw correction
-        public const bool damageCare = false; //do we give a shit about damage?  if true, drone will attempt landing if damaged
-        public float thrustoverride = 0.40f; //percentage of thruster override
         public int altMargin = 5; //minAlt +/- altMargin gives drone target altitude range
         public int thrustduration = 3000; //time in milliseconds per THRUST action
         public int altlossthresh = 50; //at how many meters of altitude lost between cycles do we panic?
+        public const double CTRL_COEFF = 0.3; //defines the strength of Pitch/Roll/Yaw correction
+        public const bool damageCare = false; //do we give a shit about damage?  if true, drone will attempt landing if damaged
+        public float thrustoverride = 0.40f; //percentage of thruster override
         #endregion
-        public Program() { Runtime.UpdateFrequency = UpdateFrequency.Update10;}
+        public Program() { Runtime.UpdateFrequency = UpdateFrequency.Update10; }
 
         public void Main()
         {
@@ -232,13 +224,18 @@ namespace IngameScript
                 if(check=="alt" || check == "h2") { continue; }//already checked above
                 if ((valuesold[check]-values[check]) >= 0) { if ((valuesold[check]-values[check]) >= divergenceThreshold) { throw new LandingException(string.Format("Value of {0} exceeded negative change threshold", check));}}
             }
+            //Set current status
+            status = "Stable";
+            if (lastAltAct != 0) { status = "Correcting altitude"; }
+            if (lastSeekAct != 0) { status = "Seeking owner"; }
+            if (landed) { status = "Landed"; }
             //Send telemetry home
             sendTelemetry(values);
             return;
         }
         public void checkPos()
         {
-            if (!rotating) { correctOrient(); } //hopefully we don't tip the fuck over
+            correctOrient();
             correctAlt();
         }
         public void correctAlt()
@@ -356,16 +353,17 @@ namespace IngameScript
         }
         public void sendTelemetry(Dictionary<string, float> data)
         {
-            IMyRadioAntenna ant;
+         /* IMyRadioAntenna ant; //Keen claims this is obsolete
             List<IMyRadioAntenna> ants = new List<IMyRadioAntenna>();
             GridTerminalSystem.GetBlocksOfType<IMyRadioAntenna>(ants);
             try { ant = ants[0]; }
             catch (Exception) { throw new LandingException("Antenna bind failure"); }
             string message = namebase;
             foreach (string str in careabout)
-            { message += String.Format(",{0}:{1}", str, values[str]);}
-            ant.TransmitMessage(message);
-            IMyIntergridCommunicationSystem xmit;
+            { message += String.Format(",{0}:{1}", str, values[str]); }
+            message += String.Format(",{0}:{1}", "status", status);
+            ant.TransmitMessage(message); */
+            IMyIntergridCommunicationSystem xmit; //But I doubt this works
             List<IMyIntergridCommunicationSystem> xmits = new List<IMyIntergridCommunicationSystem>();
             GridTerminalSystem.GetBlocksOfType<IMyIntergridCommunicationSystem>(xmits);
             try { xmit = xmits[0]; }
@@ -373,6 +371,7 @@ namespace IngameScript
             string xmitmessage = namebase;
             foreach (string str in careabout)
             { xmitmessage += String.Format(",{0}:{1}", str, values[str]); }
+            xmitmessage += String.Format(",{0}:{1}", "status", status);
             xmit.SendBroadcastMessage("n", xmitmessage);
         }
         public void engageReserves()

@@ -74,14 +74,15 @@ namespace IngameScript
             if (screaming.Length < 2) { return String.Format("Drone {0}:\n    No telemetry!\n", screaming[0].Remove(0, 2)); }
             //what the fuck am I doing
             foreach (string str in screaming) { screaminglouder.Add(str.Split(':')); }
-            telemetry += String.Format("{0}:\n    Altitude: {1}m\n    Velocity: {2}m/s\n    Uranium : {3}kg\n    Fuel    : {4}%\n    Battery: {5}%\n",screaming[0],screaminglouder[8],screaminglouder[10],screaminglouder[4],screaminglouder[2],screaminglouder[6]);
-            /* Theoretical output: [given "FD001,h2:80,U:3,batt:90,alt:20,vel:5" in Main()]
+            telemetry += String.Format("{0}:\n    Altitude: {1}m\n    Velocity: {2}m/s\n    Uranium : {3}kg\n    Fuel    : {4}%\n    Battery: {5}%\n    Status  :{6}\n",screaming[0],screaminglouder[8],screaminglouder[10],screaminglouder[4],screaminglouder[2],screaminglouder[6],screaminglouder[12]);
+            /* Theoretical output: [given "FD001,h2:80,U:3,batt:90,alt:20,vel:5,status:Stable" in Main()]
              * Drone 001:
              *     Altitude: 20m
              *     Velocity: 5m/s
              *     Uranium : 3kg
              *     Fuel    : 80%
              *     Battery : 90%
+             *     Status  : Stable
              */
             return telemetry;
         }
