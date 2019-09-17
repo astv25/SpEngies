@@ -38,7 +38,7 @@ namespace IngameScript
             var drops = new List<IMyThrust>();
             GridTerminalSystem.GetBlocksOfType<IMyThrust>(lifts, lift => lift.Orientation.Forward.ToString() == "Down");
             GridTerminalSystem.GetBlocksOfType<IMyThrust>(drops, drop => drop.Orientation.Forward.ToString() == "Up");
-            if (Runtime.TimeSinceLastRun < LastElapsed.Add(TimeSpan.FromMilliseconds(thrustduration))) { lastAltAct = 0; return; }//Only take action after thrustduration delay
+            if (Runtime.TimeSinceLastRun < LastElapsed.Add(TimeSpan.FromMilliseconds(thrustduration))) { lastAltAct = 0; Me.CustomData = "READY"; return; }//Only take action after thrustduration delay
             switch (lastAltAct)
             {
                 case 0:

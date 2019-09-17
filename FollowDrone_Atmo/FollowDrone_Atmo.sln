@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ThrustOffload", "..\ThrustO
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GyroOffload", "..\GyroOffload\GyroOffload\GyroOffload.csproj", "{505F0818-4F42-4C6C-A75B-E00EF8FEEB9F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReceiveTelemetry", "ReceiveTelemetry\ReceiveTelemetry.csproj", "{A66AF16A-F44F-487F-9903-0CAAE7139307}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -20,6 +22,8 @@ Global
 		{B6639FE0-D546-482B-B4D4-A011C08D3DA4}.Debug|x64.Build.0 = Debug|x64
 		{505F0818-4F42-4C6C-A75B-E00EF8FEEB9F}.Debug|x64.ActiveCfg = Debug|x64
 		{505F0818-4F42-4C6C-A75B-E00EF8FEEB9F}.Debug|x64.Build.0 = Debug|x64
+		{A66AF16A-F44F-487F-9903-0CAAE7139307}.Debug|x64.ActiveCfg = Debug|x64
+		{A66AF16A-F44F-487F-9903-0CAAE7139307}.Debug|x64.Build.0 = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

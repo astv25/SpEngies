@@ -24,16 +24,17 @@ namespace IngameScript
         public Dictionary<string, float> values = new Dictionary<string, float>();
         public Dictionary<string, float> valuesold = new Dictionary<string, float>();
         public List<IMyTerminalBlock> selfgridgiveashit = new List<IMyTerminalBlock>();
-        public TimeSpan LastElapsed; //Time of last thrust action
-        public TimeSpan LastElapsedRot; //Time at which point rotation was initiated
+        public TimeSpan LastElapsed; //Time of last altitude corrective action
+        public TimeSpan LastElapsedSeek; //Time at which point seek thrust was initiated
         public TimeSpan LastElapsedDad; //Time at which point daddy was last seen
+        public int lastSeekAct = 0; //Last action taken by checkProx() to seek daddy  0: no action, 1: engage thrusters
         public int lastAltAct = 0; //Last action taken by correctAlt() 0: no action, 1: lift thrust, 2: descent thrust
         public bool initSensor = false; //Have sensors been initialized?
         public bool rotating = false; //Are we rotating to face player?
         public IMyProgrammableBlock gyroctrl;
         public IMyProgrammableBlock thrustctrl;
         #region mdk preserve
-        public const string namebase = "FD001-"; //naming prefix for blocks we care about (e.g.: FD001-Reactor 1)
+        public const string namebase = "FD001"; //naming prefix for drone
         public string gyrooffload = null; //Name of programmable block to offload gyro control to, null for no offload
         public string thrustoffload = null; //Name of programmable to offload thruster control to, null for no offload
         public int minAlt = 20; //Minimum altitude to maintain (meters)
@@ -181,12 +182,12 @@ namespace IngameScript
             IMyRemoteControl RC = getRC();
             var velocity = RC.GetShipSpeed();
             values["vel"] = (float)velocity;
-            Echo("Vel: " + (int)velocity + "m/s");
+            Echo(String.Format("Vel: {0}m/s", (int)velocity));
             //Get altitude
             double altitude;
             RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
             values["alt"] = (float)altitude;
-            Echo("Alt: " + (int)altitude + "m");
+            Echo(String.Format("Alt: {0}m", (int)altitude));
             //Get H2 tank fill average
             float tgas = 0.0f;
             int tgascnt = 0;
@@ -195,7 +196,7 @@ namespace IngameScript
             foreach (IMyGasTank tank in ttanks) { if(tank.DisplayNameText.Contains("H2") || tank.DisplayNameText.Contains("Hydrogen")) { if (!tank.DisplayNameText.Contains("Reserve")) { tgas += (float)tank.FilledRatio * 100; tgascnt++; } } }
             tgas = tgas / tgascnt; //Average out total fill %
             values[careabout[0]] = tgas;
-            Echo("H2: " + tgas + "%");
+            Echo(String.Format("H2: {0}%", Math.Round(tgas)));
             if (tgas <= 25) { engageReserves(); throw new LandingException("On fuel reserves"); }
             //Get battery charge average
             float tbchg = 0.0f;
@@ -206,7 +207,7 @@ namespace IngameScript
             { tbchg += batthelper(batt); tbcnt++; }
             tbchg = tbchg / tbcnt; //Average out total battery charge %
             values[careabout[2]] = tbchg;
-            Echo("Battery: " + tbchg + "%");
+            Echo(String.Format("Battery: {0}%", tbchg));
             if (tbchg <= 25) { throw new LandingException("Low battery"); }
             //Get Uranium ingots left in reactor(s)
             long tUr = 0;
@@ -219,15 +220,16 @@ namespace IngameScript
                 foreach (MyInventoryItem itm in items) { tUr += itm.Amount.RawValue; } }
             tUrI = Math.Round(((double)tUr / 1000000), 2);
             values[careabout[1]] = (float)tUrI;
-            //DEBUG:  show calculated uranium amount
-            Echo("Uranium: " + (float)tUrI + "kg");
+            Echo(String.Format("Uranium: {0}kg", (float)tUrI));
             if (tUrI < minUr) { throw new LandingException("Uranium low");}
             //Compare current values to previous
             //Altitude:
             if ((valuesold["alt"]-values["alt"]) >= altlossthresh) { throw new ChuteException("Rapid descent"); }
+            //Hydrogen:
+            if ((valuesold["h2"]-values["h2"]) >= divergenceThreshold) { engageReserves(); throw new ChuteException("Rapid fuel loss"); }
             foreach (string check in careabout)//TODO: add specific aberration checks (e.g. Altitude) and specific handling for those [using separate exceptions]
             {
-                if(check=="alt") { continue; }//already checked above
+                if(check=="alt" || check == "h2") { continue; }//already checked above
                 if ((valuesold[check]-values[check]) >= 0) { if ((valuesold[check]-values[check]) >= divergenceThreshold) { throw new LandingException(string.Format("Value of {0} exceeded negative change threshold", check));}}
             }
             //Send telemetry home
@@ -266,8 +268,8 @@ namespace IngameScript
             switch (lastAltAct)
             {
                 case 0:
-                    if (altitude <= (minAlt - altMargin)) { Echo("Alt low."); engageThrust(lifts); break; }
-                    if (altitude >= (minAlt + altMargin)) { Echo("Alt high."); engageThrust(drops); break; }
+                    if (altitude <= (minAlt - altMargin)) { Echo("Alt low."); engageThrust(lifts, false); break; }
+                    if (altitude >= (minAlt + altMargin)) { Echo("Alt high."); engageThrust(drops, false); break; }
                     if (altitude > (minAlt - altMargin) && altitude < (minAlt + altMargin)) { lastAltAct = 0; LastElapsed = Runtime.TimeSinceLastRun; Echo("Alt OK."); break; }
                     break;
 
@@ -361,8 +363,17 @@ namespace IngameScript
             catch (Exception) { throw new LandingException("Antenna bind failure"); }
             string message = namebase;
             foreach (string str in careabout)
-            { message += " " + str + " " + values[str]; }
+            { message += String.Format(",{0}:{1}", str, values[str]);}
             ant.TransmitMessage(message);
+            IMyIntergridCommunicationSystem xmit;
+            List<IMyIntergridCommunicationSystem> xmits = new List<IMyIntergridCommunicationSystem>();
+            GridTerminalSystem.GetBlocksOfType<IMyIntergridCommunicationSystem>(xmits);
+            try { xmit = xmits[0]; }
+            catch (Exception) { throw new LandingException("Antenna bind failure"); }
+            string xmitmessage = namebase;
+            foreach (string str in careabout)
+            { xmitmessage += String.Format(",{0}:{1}", str, values[str]); }
+            xmit.SendBroadcastMessage("n", xmitmessage);
         }
         public void engageReserves()
         {
@@ -380,10 +391,10 @@ namespace IngameScript
             float battper = battratio * 100;
             return battper;
         }
-        public void engageThrust(List<IMyThrust> targets)
+        public void engageThrust(List<IMyThrust> targets, bool dampeners)
         {
             IMyRemoteControl RC = getRC();
-            RC.DampenersOverride = false;
+            RC.DampenersOverride = dampeners;
             foreach (IMyThrust thruster in targets) { thruster.ThrustOverridePercentage = thrustoverride; LastElapsed = Runtime.TimeSinceLastRun; lastAltAct = 0; }
             return;
         }
@@ -425,7 +436,7 @@ namespace IngameScript
                 try
                 {
                     IMyRemoteControl RC = getRC();
-                    RC.DampenersOverride = false;
+                    RC.DampenersOverride = true;
                     var targets = new List<IMyThrust>();
                     GridTerminalSystem.GetBlocksOfType<IMyThrust>(targets);
                     foreach (IMyThrust target in targets) { target.Enabled = false; }
@@ -475,61 +486,54 @@ namespace IngameScript
                 if (entities.Count > 0)
                 {
                     daddyfound = true;
+                    LastElapsedDad = Runtime.TimeSinceLastRun;
                     switch (sensor.Orientation.Forward.ToString())
                     {
                         case "Forward":
-                            //get distance, close if distance is over minDist
+                            if (checkDistance(sensor) > minDist) { pulseThrust("Backward"); }
                             break;
                         case "Backward":
-                            Echo("DEBUG:  owner found, rear sensor.");
-                            rotateSelf("L", 180);
+                            if (checkDistance(sensor) > minDist) { pulseThrust("Forward"); }
                             break;
                         case "Left":
-                            rotateSelf("L", 90);
+                            if (checkDistance(sensor) > minDist) { pulseThrust("Right"); }
                             break;
                         case "Right":
-                            rotateSelf("R", 90);
+                            if (checkDistance(sensor) > minDist) { pulseThrust("Left"); }
                             break;                        
                     }
                 }
             }
+            if (!daddyfound && Runtime.TimeSinceLastRun >= LastElapsedDad.Add(TimeSpan.FromMinutes((double)5)))
+            {   //immediate and lasting regret
+                throw new LandingException("uWu I can't find my daddy");
+            }
         }
-        public void rotateSelf(string direction, int degrees)
+        public int checkDistance(IMySensorBlock sensor)
         {
-            var tmGy = new List<IMyGyro>();
-            GridTerminalSystem.GetBlocksOfType<IMyGyro>(tmGy);
-            /*  Convert degrees into # of full 360 rotations
-             *  Multiply 120 sec (0.5 RPM) by # rotations
-             *  Divide result by total # of gyros to get total time to override gyros
-             */
-            int timewait = (int)((120 * (1 / (360 / degrees))) / tmGy.Count());
-            if (!rotating)
+            int dist = 0;
+            Vector3D self = getRC().GetPosition();
+            Vector3D dad = sensor.LastDetectedEntity.Position;
+            dist = (int)Vector3D.Distance(self, dad);
+            Echo(String.Format("DEBUG:  Distance between self and daddy:  {0}m", dist));
+            return dist;
+        }
+        public void pulseThrust(string direction)
+        {
+            var targets = new List<IMyThrust>();
+            GridTerminalSystem.GetBlocksOfType<IMyThrust>(targets, target => target.Orientation.Forward.ToString() == direction);
+            if (Runtime.TimeSinceLastRun < LastElapsedSeek.Add(TimeSpan.FromMilliseconds(thrustduration))) { lastSeekAct = 0; return; }
+            switch(lastSeekAct)
             {
-                float yawdir = 0;
-                if (direction == "L") { yawdir = 1; }
-                if (direction == "R") { yawdir = -1; }                
-                LastElapsedRot = Runtime.TimeSinceLastRun;
-                foreach (IMyGyro gyro in tmGy)
-                {
-                    gyro.GyroOverride = true;
-                    gyro.SetValueFloat("Yaw", 0.5f * yawdir);
-                }
-                rotating = true;
+                case 0:
+                    engageThrust(targets, true);
+                    lastSeekAct = 1;
+                    break;
+                case 1:
+                    resetThrust();
+                    lastSeekAct = 0;
+                    break;
             }
-            if (rotating)
-            {
-                if (Runtime.TimeSinceLastRun < LastElapsedRot.Add(TimeSpan.FromSeconds(timewait))) { return; }//don't do anything if we haven't rotated for the proper amount of time
-                if (Runtime.TimeSinceLastRun >= LastElapsedRot.Add(TimeSpan.FromSeconds(timewait)))
-                {   
-                    foreach (IMyGyro gyro in tmGy)
-                    {
-                        gyro.GyroOverride = false;
-                        gyro.SetValueFloat("Yaw", 0);
-                    }
-                    rotating = false;
-                }
-            }
-            
         }
     }
 }
