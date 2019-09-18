@@ -353,7 +353,7 @@ namespace IngameScript
         }
         public void sendTelemetry(Dictionary<string, float> data)
         {
-         /* IMyRadioAntenna ant; //Keen claims this is obsolete
+            IMyRadioAntenna ant; //Keen claims this is obsolete
             List<IMyRadioAntenna> ants = new List<IMyRadioAntenna>();
             GridTerminalSystem.GetBlocksOfType<IMyRadioAntenna>(ants);
             try { ant = ants[0]; }
@@ -362,17 +362,18 @@ namespace IngameScript
             foreach (string str in careabout)
             { message += String.Format(",{0}:{1}", str, values[str]); }
             message += String.Format(",{0}:{1}", "status", status);
-            ant.TransmitMessage(message); */
-            IMyIntergridCommunicationSystem xmit; //But I doubt this works
+            ant.TransmitMessage(message);
+            /*IMyIntergridCommunicationSystem xmit; //But I doubt this works
             List<IMyIntergridCommunicationSystem> xmits = new List<IMyIntergridCommunicationSystem>();
             GridTerminalSystem.GetBlocksOfType<IMyIntergridCommunicationSystem>(xmits);
             try { xmit = xmits[0]; }
             catch (Exception) { throw new LandingException("Antenna bind failure"); }
+            xmit = GridTerminalSystem.GetBlockWithName("FD-Ant") as IMyIntergridCommunicationSystem;
             string xmitmessage = namebase;
             foreach (string str in careabout)
             { xmitmessage += String.Format(",{0}:{1}", str, values[str]); }
             xmitmessage += String.Format(",{0}:{1}", "status", status);
-            xmit.SendBroadcastMessage("n", xmitmessage);
+            xmit.SendBroadcastMessage("n", xmitmessage);*/
         }
         public void engageReserves()
         {
