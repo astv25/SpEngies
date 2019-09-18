@@ -17,8 +17,8 @@ namespace IngameScript
         public Dictionary<string, float> valuesold = new Dictionary<string, float>();
         public TimeSpan LastElapsed; //Time of last altitude corrective action
         public TimeSpan LastElapsedSeek; //Time at which point seek thrust was initiated
-        public TimeSpan LastElapsedDad; //Time at which point daddy was last seen
-        public int lastSeekAct = 0; //Last action taken by checkProx() to seek daddy  0: no action, 1: engage thrusters
+        public TimeSpan LastElapsedUser; //Time at which point user was last seen
+        public int lastSeekAct = 0; //Last action taken by checkProx() to seek user  0: no action, 1: engage thrusters
         public int lastAltAct = 0; //Last action taken by correctAlt() 0: no action, 1: lift thrust, 2: descent thrust
         public bool initSensor = false; //Have sensors been initialized?
         public bool landed = false; //Have we landed?
@@ -235,25 +235,49 @@ namespace IngameScript
         }
         public void checkPos()
         {
-            correctOrient();
-            correctAlt();
-        }
-        public void correctAlt()
-        {
-            try //Check for configured thrust control offload
+            if (gyrooffload==null) { correctOrient(); }
+            if (gyrooffload != null)
             {
-                if (thrustoffload != null)
+                gyroctrl.TryRun("QUERY");
+                var data = gyroctrl.CustomData;
+                var dataarr = data.Split('|');
+                if (dataarr[0] != "INITIALIZED") { gyroctrl.TryRun("INIT"); }
+                if (dataarr[0] == "INITIALIZED")
                 {
-                    if (thrustctrl.CustomData == "READY") { thrustctrl.TryRun("RUN"); return; }
-                    if (thrustctrl.CustomData == "PROCESSING") { return; }
-                    else { throw new Exception(); }
+                    if (dataarr[1] != "HEARTBEATOK")
+                    {
+                        Echo("WARN:  No heartbeat from gyro controller!");
+                        Echo("WARN:  Reverting to local control.");
+                        gyroctrl.Enabled = false;
+                        gyrooffload = null;
+                        correctOrient();
+                    }
                 }
             }
-            catch (Exception)
+            if (thrustoffload == null) { correctAlt(); }
+            if (thrustoffload != null)
             {
-                Echo("WARN:  Thrust offload failure, attempting local control.");
+                //request heartbeat from thrustctrl
+                //no heartbeat, disable thrustctrl & take local control
+                thrustctrl.TryRun("QUERY"); //request status from thrustctrl
+                var data = thrustctrl.CustomData;
+                var dataarr = data.Split('|');
+                if (dataarr[0] != "INITIALIZED") { thrustctrl.TryRun(String.Format("INIT,{0},{1},{2},{3}", minAlt,altMargin,thrustduration,thrustoverride)); } //uninitialized thrustctrl, initialize it
+                if (dataarr[0] == "INITIALIZED")
+                {
+                    if (dataarr[1] != "HEARTBEATOK")
+                    {
+                        Echo("WARN:  No heartbeat from thrust controller!");
+                        Echo("WARN:  Reverting to local control.");
+                        thrustctrl.Enabled = false;
+                        thrustoffload = null;
+                        correctAlt();
+                    }
+                }
             }
-            
+        }
+        public void correctAlt()
+        {   
             IMyRemoteControl RC = getRC();
             double altitude;
             RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
@@ -284,60 +308,39 @@ namespace IngameScript
         }
         public void correctOrient()
         {
-            try
+            IMyRemoteControl RC = getRC();
+            //Get gyros
+            var tmGy = new List<IMyGyro>();
+            GridTerminalSystem.GetBlocksOfType<IMyGyro>(tmGy);
+            //Check pitch/roll/yaw compared to gravity
+            Matrix orient;
+            RC.Orientation.GetMatrix(out orient);
+            Vector3D down = orient.Down;
+            Vector3D grav = RC.GetNaturalGravity();
+            grav.Normalize();
+            foreach (IMyGyro gyro in tmGy)
             {
-                try //Check for a configured offload block
-                {   
-                    if (gyrooffload != null)
-                    {
-                        if (gyroctrl.CustomData == "READY") { gyroctrl.TryRun(CTRL_COEFF.ToString()); return; }
-                        if (gyroctrl.CustomData == "PROCESSING") { return; }
-                        else { throw new Exception(); }
-                    }
-                }
-                catch (Exception)
+                gyro.Orientation.GetMatrix(out orient);
+                var lDown = Vector3D.Transform(down, MatrixD.Transpose(orient));
+                var lGrav = Vector3D.Transform(grav, MatrixD.Transpose(gyro.WorldMatrix.GetOrientation()));
+                var rot = Vector3D.Cross(lDown, lGrav);
+                double ang = rot.Length();
+                ang = Math.Atan2(ang, Math.Sqrt(Math.Max(00, 1.0 - ang * ang)));
+                if (ang > 0.01)
                 {
-                    Echo("WARN:  Gyro offload failure, attempting local control.");
+                    double ctrl_vel = gyro.GetMaximum<float>("Yaw") * (ang / Math.PI) * CTRL_COEFF;
+                    ctrl_vel = Math.Min(gyro.GetMaximum<float>("Yaw"), ctrl_vel);
+                    ctrl_vel = Math.Max(0.01, ctrl_vel);
+                    rot.Normalize();
+                    rot *= ctrl_vel;
+                    gyro.SetValueFloat("Pitch", (float)rot.GetDim(0));
+                    gyro.SetValueFloat("Yaw", -(float)rot.GetDim(1));
+                    gyro.SetValueFloat("Roll", -(float)rot.GetDim(2));
+                    gyro.SetValueFloat("Power", 1.0f);
+                    gyro.GyroOverride = true;
                 }
-                IMyRemoteControl RC = getRC();
-                //Get gyros
-                var tmGy = new List<IMyGyro>();
-                GridTerminalSystem.GetBlocksOfType<IMyGyro>(tmGy);
-                //Check pitch/roll/yaw compared to gravity
-                Matrix orient;
-                RC.Orientation.GetMatrix(out orient);
-                Vector3D down = orient.Down;
-                Vector3D grav = RC.GetNaturalGravity();
-                grav.Normalize();
-                foreach (IMyGyro gyro in tmGy)
-                {
-                    gyro.Orientation.GetMatrix(out orient);
-                    var lDown = Vector3D.Transform(down, MatrixD.Transpose(orient));
-                    var lGrav = Vector3D.Transform(grav, MatrixD.Transpose(gyro.WorldMatrix.GetOrientation()));
-                    var rot = Vector3D.Cross(lDown, lGrav);
-                    double ang = rot.Length();
-                    ang = Math.Atan2(ang, Math.Sqrt(Math.Max(00, 1.0 - ang * ang)));
-                    if (ang > 0.01)
-                    {
-                        double ctrl_vel = gyro.GetMaximum<float>("Yaw") * (ang / Math.PI) * CTRL_COEFF;
-                        ctrl_vel = Math.Min(gyro.GetMaximum<float>("Yaw"), ctrl_vel);
-                        ctrl_vel = Math.Max(0.01, ctrl_vel);
-                        rot.Normalize();
-                        rot *= ctrl_vel;
-                        gyro.SetValueFloat("Pitch", (float)rot.GetDim(0));
-                        gyro.SetValueFloat("Yaw", -(float)rot.GetDim(1));
-                        gyro.SetValueFloat("Roll", -(float)rot.GetDim(2));
-                        gyro.SetValueFloat("Power", 1.0f);
-                        gyro.GyroOverride = true;
-                    }
-                    if (ang < 0.01) { gyro.GyroOverride = false; gyro.SetValueFloat("Pitch", 0); gyro.SetValueFloat("Yaw", 0); gyro.SetValueFloat("Roll", 0); }
-                }
+                if (ang < 0.01) { gyro.GyroOverride = false; gyro.SetValueFloat("Pitch", 0); gyro.SetValueFloat("Yaw", 0); gyro.SetValueFloat("Roll", 0); }
             }
-            catch (Exception ex)
-            {
-                throw new LandingException("Gyro processing exception: " + ex);
-            }
-            
         }
         public void damageCheck()
         {
@@ -474,7 +477,7 @@ namespace IngameScript
         public void checkProx()
         {
             var sensors = new List<IMySensorBlock>();
-            bool daddyfound = false;
+            bool userfound = false;
             long tmp = 0;//FUCK YOU KEEN, THIS IS RETARDED
             IMySensorBlock forwardsensor = GridTerminalSystem.GetBlockWithId(tmp) as IMySensorBlock;
             GridTerminalSystem.GetBlocksOfType<IMySensorBlock>(sensors);
@@ -485,8 +488,8 @@ namespace IngameScript
                 sensor.DetectedEntities(entities);
                 if (entities.Count > 0)
                 {
-                    daddyfound = true;
-                    LastElapsedDad = Runtime.TimeSinceLastRun;
+                    userfound = true;
+                    LastElapsedUser = Runtime.TimeSinceLastRun;
                     switch (sensor.Orientation.Forward.ToString())
                     {
                         case "Forward":
@@ -504,9 +507,9 @@ namespace IngameScript
                     }
                 }
             }
-            if (!daddyfound && Runtime.TimeSinceLastRun >= LastElapsedDad.Add(TimeSpan.FromMinutes((double)5)))
-            {   //immediate and lasting regret
-                throw new LandingException("uWu I can't find my daddy");
+            if (!userfound && Runtime.TimeSinceLastRun >= LastElapsedUser.Add(TimeSpan.FromMinutes((double)5)))
+            { 
+                throw new LandingException("can't find user");
             }
         }
         public int checkDistance(IMySensorBlock sensor)
@@ -515,7 +518,7 @@ namespace IngameScript
             Vector3D self = getRC().GetPosition();
             Vector3D dad = sensor.LastDetectedEntity.Position;
             dist = (int)Vector3D.Distance(self, dad);
-            Echo(String.Format("DEBUG:  Distance between self and daddy:  {0}m", dist));
+            Echo(String.Format("DEBUG:  Distance between self and user:  {0}m", dist));
             return dist;
         }
         public void pulseThrust(string direction)

@@ -27,10 +27,12 @@ namespace IngameScript
         public int altMargin = 5;
         public int thrustduration = 3000;
         public float thrustoverride = 0.40f;
+        public bool initialized = false;
+
+        public Program() { Runtime.UpdateFrequency = UpdateFrequency.Update10; }
 
         public void correctAlt()
-        {
-            Me.CustomData = "PROCESSING";
+        {   
             IMyRemoteControl RC = getRC();
             double altitude;
             RC.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
@@ -38,7 +40,7 @@ namespace IngameScript
             var drops = new List<IMyThrust>();
             GridTerminalSystem.GetBlocksOfType<IMyThrust>(lifts, lift => lift.Orientation.Forward.ToString() == "Down");
             GridTerminalSystem.GetBlocksOfType<IMyThrust>(drops, drop => drop.Orientation.Forward.ToString() == "Up");
-            if (Runtime.TimeSinceLastRun < LastElapsed.Add(TimeSpan.FromMilliseconds(thrustduration))) { lastAltAct = 0; Me.CustomData = "READY"; return; }//Only take action after thrustduration delay
+            if (Runtime.TimeSinceLastRun < LastElapsed.Add(TimeSpan.FromMilliseconds(thrustduration))) { lastAltAct = 0; return; }//Only take action after thrustduration delay
             switch (lastAltAct)
             {
                 case 0:
@@ -58,7 +60,6 @@ namespace IngameScript
                     lastAltAct = 0;
                     break;
             }
-            Me.CustomData = "READY";
         }
 
         public void engageThrust(List<IMyThrust> targets)
@@ -90,21 +91,20 @@ namespace IngameScript
 
         public void Main(string argument, UpdateType updateSource)
         {
-            char[] split = ",".ToCharArray();
-            var args = new List<string>(argument.Split(split));
+            var args = new List<string>(argument.Split(','));
             if(args[0] == "INIT")
             {
                 minAlt = Convert.ToInt32(args[1]);
                 altMargin = Convert.ToInt32(args[2]);
                 thrustduration = Convert.ToInt32(args[3]);
                 thrustoverride = float.Parse(args[4]);
-                Me.CustomData = "READY";
+                Me.CustomData = "INITIALIZED";
+                initialized = true;
                 return;
             }
-            if(args[0] == "RUN")
-            {
-                correctAlt();
-            }
+            if(args[0] == "QUERY") { if (initialized) { Me.CustomData = "INITIALIZED|HEARTBEATOK"; return; } }
+            if (Me.CustomData == "INITIALIZED|HEARTBEATOK") { Me.CustomData = "INITIALIZED"; }
+            correctAlt();
         }
     }
 }

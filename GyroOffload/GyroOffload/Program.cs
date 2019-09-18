@@ -21,6 +21,11 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
+        public const double CTRL_COEFF = 0.3;
+        public bool initialized = false;
+
+        public Program() { Runtime.UpdateFrequency = UpdateFrequency.Update10; }
+
         public IMyRemoteControl getRC()
         {
             IMyRemoteControl RC;
@@ -28,6 +33,42 @@ namespace IngameScript
             GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(tRC);
             RC = tRC[0];
             return RC;
+        }
+        public void correctOrient()
+        {
+            IMyRemoteControl RC = getRC();
+            //Get gyros
+            var tmGy = new List<IMyGyro>();
+            GridTerminalSystem.GetBlocksOfType<IMyGyro>(tmGy);
+            //Check pitch/roll/yaw compared to gravity
+            Matrix orient;
+            RC.Orientation.GetMatrix(out orient);
+            Vector3D down = orient.Down;
+            Vector3D grav = RC.GetNaturalGravity();
+            grav.Normalize();
+            foreach (IMyGyro gyro in tmGy)
+            {
+                gyro.Orientation.GetMatrix(out orient);
+                var lDown = Vector3D.Transform(down, MatrixD.Transpose(orient));
+                var lGrav = Vector3D.Transform(grav, MatrixD.Transpose(gyro.WorldMatrix.GetOrientation()));
+                var rot = Vector3D.Cross(lDown, lGrav);
+                double ang = rot.Length();
+                ang = Math.Atan2(ang, Math.Sqrt(Math.Max(00, 1.0 - ang * ang)));
+                if (ang > 0.01)
+                {
+                    double ctrl_vel = gyro.GetMaximum<float>("Yaw") * (ang / Math.PI) * CTRL_COEFF;
+                    ctrl_vel = Math.Min(gyro.GetMaximum<float>("Yaw"), ctrl_vel);
+                    ctrl_vel = Math.Max(0.01, ctrl_vel);
+                    rot.Normalize();
+                    rot *= ctrl_vel;
+                    gyro.SetValueFloat("Pitch", (float)rot.GetDim(0));
+                    gyro.SetValueFloat("Yaw", -(float)rot.GetDim(1));
+                    gyro.SetValueFloat("Roll", -(float)rot.GetDim(2));
+                    gyro.SetValueFloat("Power", 1.0f);
+                    gyro.GyroOverride = true;
+                }
+                if (ang < 0.01) { gyro.GyroOverride = false; gyro.SetValueFloat("Pitch", 0); gyro.SetValueFloat("Yaw", 0); gyro.SetValueFloat("Roll", 0); }
+            }
         }
 
         public void Main(string argument, UpdateType updateSource)
@@ -67,51 +108,17 @@ namespace IngameScript
                     Echo("Unable to detect gravity! ( " + ex.Message + " )");
                     Me.CustomData = "FAULT";
                 }
-                Me.CustomData = "READY";
+                Me.CustomData = "INITIALIZED";
+                initialized = true;
                 return;
             }
-            if(Convert.ToDouble(argument) <= 1.00)
+            if (argument == "QUERY")
             {
-                correctOrient(Convert.ToDouble(argument));
+                if (initialized) { Me.CustomData = Me.CustomData+="|HEARTBEATOK"; return; }
             }
+            if(Me.CustomData == "INITIALIZED|HEARTBEATOK") { Me.CustomData = "INITIALIZED"; }
+            correctOrient();
         }
-        public void correctOrient(double CTRL_COEFF)
-        {
-            Me.CustomData = "PROCESSING";
-            IMyRemoteControl RC = getRC();
-            //Get gyros
-            var tmGy = new List<IMyGyro>();
-            GridTerminalSystem.GetBlocksOfType<IMyGyro>(tmGy);
-            //Check pitch/roll/yaw compared to gravity
-            Matrix orient;
-            RC.Orientation.GetMatrix(out orient);
-            Vector3D down = orient.Down;
-            Vector3D grav = RC.GetNaturalGravity();
-            grav.Normalize();
-            foreach (IMyGyro gyro in tmGy)
-            {
-                gyro.Orientation.GetMatrix(out orient);
-                var lDown = Vector3D.Transform(down, MatrixD.Transpose(orient));
-                var lGrav = Vector3D.Transform(grav, MatrixD.Transpose(gyro.WorldMatrix.GetOrientation()));
-                var rot = Vector3D.Cross(lDown, lGrav);
-                double ang = rot.Length();
-                ang = Math.Atan2(ang, Math.Sqrt(Math.Max(00, 1.0 - ang * ang)));
-                if (ang > 0.01)
-                {
-                    double ctrl_vel = gyro.GetMaximum<float>("Yaw") * (ang / Math.PI) * CTRL_COEFF;
-                    ctrl_vel = Math.Min(gyro.GetMaximum<float>("Yaw"), ctrl_vel);
-                    ctrl_vel = Math.Max(0.01, ctrl_vel);
-                    rot.Normalize();
-                    rot *= ctrl_vel;
-                    gyro.SetValueFloat("Pitch", (float)rot.GetDim(0));
-                    gyro.SetValueFloat("Yaw", -(float)rot.GetDim(1));
-                    gyro.SetValueFloat("Roll", -(float)rot.GetDim(2));
-                    gyro.SetValueFloat("Power", 1.0f);
-                    gyro.GyroOverride = true;
-                }
-                if (ang < 0.01) { gyro.GyroOverride = false; gyro.SetValueFloat("Pitch", 0); gyro.SetValueFloat("Yaw", 0); gyro.SetValueFloat("Roll", 0); }
-            }
-            Me.CustomData = "READY";
-        }
+        
     }
 }
